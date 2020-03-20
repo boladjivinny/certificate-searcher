@@ -1,13 +1,19 @@
 package main
 
 import (
+	"bufio"
+	"encoding/csv"
 	"flag"
 	"fmt"
 	"github.com/pkg/profile"
+	"github.com/teamnsrg/zcrypto/x509"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"io/ioutil"
 	"os"
 	"runtime"
+	"strings"
+	"sync"
 )
 
 var log *zap.SugaredLogger
@@ -22,8 +28,7 @@ func initLogger() {
 	log = logger.Sugar()
 }
 
-// whether the given file or directory exists
-func exists(path string) (bool, error) {
+func pathExists(path string) (bool, error) {
 	_, err := os.Stat(path)
 	if err == nil {
 		return true, nil
@@ -35,6 +40,97 @@ func exists(path string) (bool, error) {
 	return true, err
 }
 
+func verifyPathExists(path string) {
+	if ok, err := pathExists(path); err != nil || !ok {
+		log.Errorf("Invalid input file/directory: %s\n", path)
+		if err != nil {
+			log.Errorf("%s\n", err.Error())
+		}
+		os.Exit(1)
+	}
+}
+
+func isDirectory(path string) (bool, error) {
+	fileInfo, err := os.Stat(path)
+	if err != nil {
+		return false, err
+	}
+	return fileInfo.IsDir(), nil
+}
+
+func getDirectoryFiles(dirPath string) ([]string, error) {
+	filepaths := make([]string, 0)
+	if files, err := ioutil.ReadDir(dirPath); err != nil {
+		return filepaths, err
+	} else {
+		baseDir := strings.TrimSuffix(dirPath, "/")
+		for _, info := range files {
+			filepaths = append(filepaths, baseDir+"/"+info.Name())
+		}
+	}
+
+	return filepaths, nil
+}
+
+func getFilesForPath(path string) (filepaths []string, err error) {
+	if isDir, err := isDirectory(path); err == nil && isDir {
+		filepaths, err = getDirectoryFiles(path)
+	} else if !isDir {
+		filepaths = []string{path}
+	}
+
+	return
+}
+
+func readCSVFiles(filepaths []string, dataRows chan []string, wg *sync.WaitGroup) {
+	for _, filepath := range filepaths {
+		log.Infof("reading file %s", filepath)
+		f, err := os.Open(filepath)
+		if err != nil {
+			log.Error(err)
+			continue
+		}
+
+		reader := csv.NewReader(f)
+		//reader.Comma = ','
+
+		records, err := reader.ReadAll()
+		for _, line := range records {
+			dataRows <- line
+		}
+		f.Close()
+	}
+	wg.Done()
+}
+
+func parseCertificates(dataRows chan []string, outputStrings chan string, wg *sync.WaitGroup) {
+	parser := x509.NewCertParser()
+	log.Info(parser)
+}
+
+func writeOutput(outputStrings chan string, outputFilename string, wg *sync.WaitGroup) {
+	var outputFile *os.File
+	var err error
+
+	if outputFilename == "-" {
+		outputFile = os.Stdout
+	} else if len(outputFilename) > 0 {
+		outputFile, err = os.Create(outputFilename)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	w := bufio.NewWriterSize(outputFile, 4096*50000)
+
+	for output := range outputStrings {
+		w.WriteString(output)
+	}
+	w.Flush()
+
+	outputFile.Close()
+	wg.Done()
+}
 
 // Command line flags
 var (
@@ -42,7 +138,7 @@ var (
 	workerCount    = flag.Int("workers", runtime.NumCPU(), "Number of parallel parsers/json marshallers")
 	memProfile     = flag.Bool("mem-profile", false, "Run memory profiling")
 	cpuProfile     = flag.Bool("cpu-profile", false, "Run cpu profiling")
-	usage = func() {
+	usage          = func() {
 		fmt.Fprintf(os.Stderr, "Usage of %s: %s <flags> <input-file-or-dir>\n", os.Args[0], os.Args[0])
 		fmt.Print("Flags:\n")
 		flag.PrintDefaults()
@@ -60,8 +156,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	inputPath := flag.Arg(0)
-
 	if *cpuProfile {
 		defer profile.Start(profile.CPUProfile, profile.ProfilePath(".")).Stop()
 	}
@@ -69,55 +163,33 @@ func main() {
 		defer profile.Start(profile.MemProfile, profile.ProfilePath("."), profile.NoShutdownHook).Stop()
 	}
 
-	if ok, err := exists(inputPath); err != nil || !ok {
-		log.Errorf("Invalid input file/directory: %s\n", inputPath)
-		if err != nil {
-			log.Errorf("%s\n", err.Error())
-		}
-		os.Exit(1)
+	inputPath := flag.Arg(0)
+	verifyPathExists(inputPath)
+
+	filepaths, err := getFilesForPath(inputPath)
+	if err != nil {
+		log.Fatalf("Unable to get files for path %s", inputPath)
 	}
 
-	//
-	//var filepaths []string
-	//
-	//if isDir, err := isDirectory(*fname); err != nil {
-	//	log.Fatal("Unable to determine if input path is file/directory: ", *fname)
-	//} else if isDir {
-	//	filepaths, err = mwdomains.GetCertFiles(*fname, *suffix, *recursiveDir)
-	//	if err != nil {
-	//		log.Fatal("Unable to retrieve files from diretory: ", err)
-	//	}
-	//} else if !isDir {
-	//	filepaths = []string{*fname}
-	//}
-	//
-	//rawCertRecords := make(chan []string, *workerCount)
-	//readWG := &sync.WaitGroup{}
-	//readWG.Add(1)
-	//go readCertificates(filepaths, rawCertRecords, readWG)
-	//
-	//parsedCertStrings := make(chan string)
-	//parsedZlintStrings := make(chan string)
-	//
-	//workerWG := &sync.WaitGroup{}
-	//for i := 0; i < *workerCount; i++ {
-	//	workerWG.Add(1)
-	//	go certParser(rawCertRecords, parsedCertStrings, parsedZlintStrings, workerWG)
-	//}
-	//
-	//writeWG := &sync.WaitGroup{}
-	//writeWG.Add(1)
-	//go writeCertificates(parsedCertStrings, writeWG)
-	//
-	//writeZlintWG := &sync.WaitGroup{}
-	//writeZlintWG.Add(1)
-	//go writeZlint(parsedZlintStrings, writeZlintWG)
-	//
-	//readWG.Wait()
-	//close(rawCertRecords)
-	//workerWG.Wait()
-	//close(parsedCertStrings)
-	//close(parsedZlintStrings)
-	//writeWG.Wait()
-	//writeZlintWG.Wait()
+	dataRows := make(chan []string, *workerCount)
+	readWG := &sync.WaitGroup{}
+	readWG.Add(1)
+	go readCSVFiles(filepaths, dataRows, readWG)
+
+	outputStrings := make(chan string)
+	workerWG := &sync.WaitGroup{}
+	for i := 0; i < *workerCount; i++ {
+		workerWG.Add(1)
+		go parseCertificates(dataRows, outputStrings, workerWG)
+	}
+
+	writeWG := &sync.WaitGroup{}
+	writeWG.Add(1)
+	go writeOutput(outputStrings, *outputFilepath, writeWG)
+
+	readWG.Wait()
+	close(dataRows)
+	workerWG.Wait()
+	close(outputStrings)
+	writeWG.Wait()
 }
