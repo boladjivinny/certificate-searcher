@@ -1,2 +1,2 @@
-# certificate-scanner
-Utility for scanning lots of certificates quickly
+# certificate-searcher
+Utility for searching lots of certificates quickly
