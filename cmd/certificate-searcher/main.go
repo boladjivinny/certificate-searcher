@@ -6,7 +6,9 @@ import (
 	"flag"
 	"fmt"
 	"github.com/pkg/profile"
+	cs "github.com/teamnsrg/certificate-searcher"
 	"github.com/teamnsrg/zcrypto/x509"
+	"github.com/teamnsrg/zcrypto/x509/pkix"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"io/ioutil"
@@ -101,6 +103,41 @@ func readCSVFiles(filepaths []string, dataRows chan []string, wg *sync.WaitGroup
 		f.Close()
 	}
 	wg.Done()
+}
+
+
+func parseCertificateNamesOnly(bytes []byte) (*x509.Certificate, error) {
+	cert := &x509.Certificate{}
+	cert.Raw = make([]byte, len(bytes))
+	copy(cert.Raw, bytes)
+	cert.DNSNames = make([]string, 0)
+	cert.Subject = pkix.Name{}
+	offset := 0
+	var err error
+	for _, asn1Obj := range cs.CertObjs {
+		switch asn1Obj.Name {
+		case "Subject":
+			var subjectName *pkix.Name
+			subjectName, offset, err = asn1Obj.SubjectCommonName(bytes, offset)
+			if subjectName != nil {
+				cert.Subject = *subjectName
+			}
+		case "Extensions":
+			var subjectAltNames []string
+			subjectAltNames, offset, err = asn1Obj.SubjectAltName(bytes, offset)
+			if subjectAltNames != nil {
+				cert.DNSNames = append(cert.DNSNames, subjectAltNames...)
+			}
+		default:
+			offset, err = asn1Obj.AdvanceOffset(bytes, offset)
+		}
+
+		if err != nil {
+			return cert, err
+		}
+	}
+
+	return cert, err
 }
 
 func parseCertificates(dataRows chan []string, outputStrings chan string, wg *sync.WaitGroup) {
