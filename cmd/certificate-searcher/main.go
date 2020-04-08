@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"encoding/base64"
 	"encoding/csv"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"github.com/pkg/profile"
@@ -23,7 +22,7 @@ import (
 var log *zap.SugaredLogger
 
 func initLogger() {
-	atom := zap.NewAtomicLevelAt(zap.InfoLevel)
+	atom := zap.NewAtomicLevelAt(zap.DebugLevel)
 	logger := zap.New(zapcore.NewCore(
 		zapcore.NewConsoleEncoder(zap.NewDevelopmentEncoderConfig()),
 		zapcore.Lock(os.Stdout),
@@ -107,32 +106,6 @@ func readCSVFiles(filepaths []string, dataRows chan []string, wg *sync.WaitGroup
 	wg.Done()
 }
 
-func readJSONFiles(filepaths []string, certChains chan *cs.CertChain, wg *sync.WaitGroup) {
-	for _, filepath := range filepaths {
-		log.Infof("reading file %s", filepath)
-		f, err := os.Open(filepath)
-		if err != nil {
-			log.Error(err)
-			continue
-		}
-		defer f.Close()
-
-		scanner := bufio.NewScanner(f)
-		for scanner.Scan() {
-			var chain cs.CertChain
-			line := scanner.Text()
-			err := json.Unmarshal([]byte(line), &chain)
-			if err != nil {
-				log.Fatal(err)
-			}
-			log.Info(line)
-			certChains <- &chain
-		}
-
-	}
-	wg.Done()
-}
-
 func parseCertificateNamesOnly(bytes []byte) (*x509.Certificate, error) {
 	cert := &x509.Certificate{}
 	cert.Raw = make([]byte, len(bytes))
@@ -192,7 +165,7 @@ func decodeAndParseChain(encodedCertChain []string, parser *x509.CertParser, onl
 	return certChain, nil
 }
 
-func processCertificates(dataRows chan []string, outputStrings chan string, onlyParseNames bool, wg *sync.WaitGroup) {
+func processCertificates(dataRows chan []string, outputStrings chan string, labelers []cs.DomainLabeler , onlyParseNames bool, wg *sync.WaitGroup) {
 	const CERT_INDEX int = 1
 	const CHAIN_INDEX int = 3
 	const CHAIN_DELIMETER string = "|"
@@ -215,8 +188,15 @@ func processCertificates(dataRows chan []string, outputStrings chan string, only
 
 		leafCert := certChain[0]
 
-		log.Info(leafCert)
+		for _, name := range leafCert.DNSNames {
+			labels := labelers[0].LabelDomain(name)
+			if len(labels) > 0 {
+				outputStrings <- labels[0].String()
+			}
+		}
 	}
+
+	wg.Done()
 }
 
 func writeOutput(outputStrings chan string, outputFilename string, wg *sync.WaitGroup) {
@@ -235,7 +215,7 @@ func writeOutput(outputStrings chan string, outputFilename string, wg *sync.Wait
 	w := bufio.NewWriterSize(outputFile, 4096*50000)
 
 	for output := range outputStrings {
-		w.WriteString(output)
+		w.WriteString(output + "\n")
 	}
 	w.Flush()
 
@@ -283,9 +263,19 @@ func main() {
 		log.Fatalf("Unable to get files for path %s", inputPath)
 	}
 
+	baseDomains := []string{
+		"www.google.com",
+		"www.youtube.com",
+		"www.tmall.com",
+		"www.facebook.com",
+		"www.baidu.com",
+	}
+
+	log.Info("building domain labelers")
+	tsl := cs.NewTypoSquattingLabeler(&baseDomains)
 	// TODO: Build suite of domain checkers
-	//checkerSuite := make([]*domainChecker, 0)
-	//append(checkerSuite, )
+	domainLabelers := make([]cs.DomainLabeler, 0)
+	domainLabelers = append(domainLabelers, tsl)
 
 	dataRows := make(chan []string, *workerCount)
 	readWG := &sync.WaitGroup{}
@@ -296,7 +286,7 @@ func main() {
 	workerWG := &sync.WaitGroup{}
 	for i := 0; i < *workerCount; i++ {
 		workerWG.Add(1)
-		go processCertificates(dataRows, outputStrings, *namesOnly, workerWG)
+		go processCertificates(dataRows, outputStrings, domainLabelers, *namesOnly, workerWG)
 	}
 
 	writeWG := &sync.WaitGroup{}
