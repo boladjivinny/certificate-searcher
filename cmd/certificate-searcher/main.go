@@ -167,8 +167,7 @@ func parseCertificateNamesOnly(bytes []byte) (*x509.Certificate, error) {
 	return cert, err
 }
 
-
-func decodeAndParseChain(encodedCertChain []string, parser *x509.CertParser) ([]*x509.Certificate, error) {
+func decodeAndParseChain(encodedCertChain []string, parser *x509.CertParser, onlyParseName bool) ([]*x509.Certificate, error) {
 	certChain := make([]*x509.Certificate, 0)
 	for _, encodedCert := range encodedCertChain {
 		certBytes, err := base64.StdEncoding.DecodeString(encodedCert)
@@ -176,7 +175,13 @@ func decodeAndParseChain(encodedCertChain []string, parser *x509.CertParser) ([]
 			return nil, err
 		}
 
-		cert, err := parser.ParseCertificate(certBytes)
+		var cert *x509.Certificate
+		if onlyParseName {
+			cert, err = parseCertificateNamesOnly(certBytes)
+		} else {
+			cert, err = parser.ParseCertificate(certBytes)
+		}
+
 		if err != nil {
 			log.Errorf("Unable to parse certificate %s due to %s", encodedCert, err)
 			return nil, err
@@ -187,7 +192,7 @@ func decodeAndParseChain(encodedCertChain []string, parser *x509.CertParser) ([]
 	return certChain, nil
 }
 
-func processCertificates(dataRows chan []string, outputStrings chan string, wg *sync.WaitGroup) {
+func processCertificates(dataRows chan []string, outputStrings chan string, onlyParseNames bool, wg *sync.WaitGroup) {
 	const CERT_INDEX int = 1
 	const CHAIN_INDEX int = 3
 	const CHAIN_DELIMETER string = "|"
@@ -202,7 +207,7 @@ func processCertificates(dataRows chan []string, outputStrings chan string, wg *
 			chainB64 = append([]string{certB64}, chainB64...)
 		}
 
-		certChain, err := decodeAndParseChain(chainB64, parser)
+		certChain, err := decodeAndParseChain(chainB64, parser, onlyParseNames)
 		if err != nil {
 			log.Error(err)
 			continue
@@ -244,40 +249,13 @@ var (
 	workerCount    = flag.Int("workers", runtime.NumCPU(), "Number of parallel parsers/json unmarshallers")
 	memProfile     = flag.Bool("mem-profile", false, "Run memory profiling")
 	cpuProfile     = flag.Bool("cpu-profile", false, "Run cpu profiling")
+	namesOnly      = flag.Bool("names-only", false, "only parse names from cert (faster)")
 	usage          = func() {
 		fmt.Fprintf(os.Stderr, "Usage of %s: %s <flags> <input-file-or-dir>\n", os.Args[0], os.Args[0])
 		fmt.Print("Flags:\n")
 		flag.PrintDefaults()
 	}
 )
-
-type MaliciousDomainMethodology int
-const (
-	// Seven Months’ Worth of Mistakes: A Longitudinal Study of Typosquatting Abuse - NDSS 2015
-	TYPOSQUATTING MaliciousDomainMethodology = iota
-	// You Are Who You Appear to Be: A Longitudinal Study of Domain Impersonation in TLS Certificates - CCS 2019
-	TARGET_EMBEDDING
-	// Hiding in Plain Sight: A Longitudinal Study of Combosquatting Abuse - CCS 2017
-	COMBOSQUATTING
-	// Cutting through the Confusion: A Measurement Study of Homograph Attacks - ATC 2006
-	HOMOGRAPH
-	// Needle in a Haystack: Tracking Down Elite Phishing Domains in the Wild - IMC 2018
-	WRONGTLD
-	// Bitsquatting: Exploiting bit-flips for fun, or profit? WWW 2013
-	BITSQUATTING
-	// Phishtank
-	PHISHTANK
-	// SSLBL
-	SSL_BLACKLIST
-	// Google SafeBrowsing
-	GOOGLE_SAFEBROWSING
-)
-
-type domainChecker interface {
-	setBaseDomains(string) error
-	detectionMethodology() MaliciousDomainMethodology
-	maliciousDomain(string) bool
-}
 
 func main() {
 	initLogger()
@@ -318,7 +296,7 @@ func main() {
 	workerWG := &sync.WaitGroup{}
 	for i := 0; i < *workerCount; i++ {
 		workerWG.Add(1)
-		go processCertificates(dataRows, outputStrings, workerWG)
+		go processCertificates(dataRows, outputStrings, *namesOnly, workerWG)
 	}
 
 	writeWG := &sync.WaitGroup{}
