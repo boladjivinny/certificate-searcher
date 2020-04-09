@@ -133,8 +133,15 @@ func parseCertificateNamesOnly(bytes []byte) (*x509.Certificate, error) {
 		}
 
 		if err != nil {
-			return cert, err
+			switch err.(type) {
+			case cs.MissingExtensionError:
+				return cert, nil
+			default:
+				return cert, err
+			}
 		}
+
+
 	}
 
 	return cert, err
@@ -269,6 +276,7 @@ func main() {
 		"www.tmall.com",
 		"www.facebook.com",
 		"www.baidu.com",
+		"www.apple.com",
 	}
 
 	log.Info("building domain labelers")

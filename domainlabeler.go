@@ -34,17 +34,21 @@ const (
 	GOOGLE_SAFEBROWSING
 )
 
+func (dl DomainLabel) String() string {
+	return [...]string{"Unlabeled", "TYPOSQUATTING_MISSING_DOT", "TYPOSQUATTING_CHAR_OMISSION"}[dl]
+}
+
 type DomainLabeler interface {
 	LabelDomain(domain string) []DomainLabel
 }
 
 type TypoSquattingLabeler struct {
-	BaseDomains *[]string
-	MissingDotDomains map[string]struct{}
-	CharOmissionDomains map[string]struct{}
-	CharPermutationDomains map[string]struct{}
+	BaseDomains             *[]string
+	MissingDotDomains       map[string]struct{}
+	CharOmissionDomains     map[string]struct{}
+	CharPermutationDomains  map[string]struct{}
 	CharSubstitutionDomains map[string]struct{}
-	CharDuplicationDomains map[string]struct{}
+	CharDuplicationDomains  map[string]struct{}
 }
 
 func NewTypoSquattingLabeler(baseDomains *[]string) *TypoSquattingLabeler {
@@ -62,13 +66,62 @@ func NewTypoSquattingLabeler(baseDomains *[]string) *TypoSquattingLabeler {
 			tsl.MissingDotDomains["www"+domain[4:]] = struct{}{}
 		}
 
-		for idx, char := range domain {
+		runeDomain := []rune(domain)
+
+		for idx, r := range runeDomain {
+			if !unicode.IsLetter(r) {
+				continue
+			}
+
+			tempSlice := append(make([]rune, 0), runeDomain[:idx]...)
+			omittedCharDomain := string(append(tempSlice, runeDomain[idx+1:]...))
+			tsl.CharOmissionDomains[omittedCharDomain] = struct{}{}
+		}
+
+		for idx, char := range runeDomain {
+			if idx >= len(domain)-1 {
+				break
+			}
+			if !unicode.IsLetter(char) || !unicode.IsLetter(runeDomain[idx+1]) {
+				continue
+			}
+			if runeDomain[idx] == runeDomain[idx+1] {
+				continue
+			}
+
+			tempSlice := append(make([]rune, 0), runeDomain[:idx]...)
+			tempSlice = append(tempSlice, runeDomain[idx+1], runeDomain[idx])
+			permutedCharDomain := string(append(tempSlice, runeDomain[idx+2:]...))
+			tsl.CharPermutationDomains[permutedCharDomain] = struct{}{}
+		}
+
+		for idx, char := range runeDomain {
 			if !unicode.IsLetter(char) {
 				continue
 			}
 
-			omittedCharDomain := domain[:idx] + domain[idx+1:]
-			tsl.CharOmissionDomains[omittedCharDomain] = struct{}{}
+			tempSlice := append(make([]rune, 0), runeDomain[:idx]...)
+			tempSlice = append(tempSlice, runeDomain[idx])
+			duplicatedCharDomain := string(append(tempSlice, runeDomain[idx:]...))
+			tsl.CharDuplicationDomains[duplicatedCharDomain] = struct{}{}
+		}
+
+		for idx, char := range runeDomain {
+			if !QwertyAlphanumeric(char) {
+				continue
+			}
+
+			adjacentChars, err := QwertyAdjacentRunes(char)
+			if err != nil {
+				continue
+			}
+
+			for _, adjacentChar := range adjacentChars {
+				tempSlice := append(make([]rune, 0), runeDomain[:idx]...)
+				tempSlice = append(tempSlice, adjacentChar)
+				substitutedCharDomain := string(append(tempSlice, runeDomain[idx+1:]...))
+				tsl.CharSubstitutionDomains[substitutedCharDomain] = struct{}{}
+			}
 		}
 	}
 
@@ -84,7 +137,15 @@ func (t *TypoSquattingLabeler) LabelDomain(domain string) []DomainLabel {
 	if _, present := t.CharOmissionDomains[domain]; present {
 		domainLabel = append(domainLabel, TYPOSQUATTING_CHAR_OMISSION)
 	}
-
+	if _, present := t.CharPermutationDomains[domain]; present {
+		domainLabel = append(domainLabel, TYPOSQUATTING_CHAR_PERMUTATION)
+	}
+	if _, present := t.CharDuplicationDomains[domain]; present {
+		domainLabel = append(domainLabel, TYPOSQUATTING_CHAR_DUPLICATION)
+	}
+	if _, present := t.CharSubstitutionDomains[domain]; present {
+		domainLabel = append(domainLabel, TYPOSQUATTING_CHAR_SUBSTITUTION)
+	}
 
 	return domainLabel
 }
