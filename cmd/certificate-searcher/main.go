@@ -237,6 +237,7 @@ var (
 	memProfile     = flag.Bool("mem-profile", false, "Run memory profiling")
 	cpuProfile     = flag.Bool("cpu-profile", false, "Run cpu profiling")
 	namesOnly      = flag.Bool("names-only", false, "only parse names from cert (faster)")
+	domainFilepath = flag.String("domains", "", ".txt file with base domain names for name-similarity labeling")
 	usage          = func() {
 		fmt.Fprintf(os.Stderr, "Usage of %s: %s <flags> <input-file-or-dir>\n", os.Args[0], os.Args[0])
 		fmt.Print("Flags:\n")
@@ -255,6 +256,41 @@ func main() {
 		os.Exit(1)
 	}
 
+	var baseDomains []string
+	defaultDomains := []string{
+		"www.google.com",
+		"www.youtube.com",
+		"www.tmall.com",
+		"www.facebook.com",
+		"www.baidu.com",
+		"www.apple.com",
+	}
+
+	if *domainFilepath == "" {
+		log.Infof("No base domain file specified, using default list of %d domains", len(defaultDomains))
+		baseDomains = defaultDomains
+	} else {
+		f, err := os.Open(*domainFilepath)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer f.Close()
+
+		baseDomains = make([]string, 0)
+		scanner := bufio.NewScanner(f)
+		for scanner.Scan() {
+			rawDomain := scanner.Text()
+			sanitizedDomain := strings.ToLower(rawDomain)
+			baseDomains = append(baseDomains, sanitizedDomain)
+
+			if rawDomain != sanitizedDomain {
+				log.Warnf("domain %s was sanitized to %s", rawDomain, sanitizedDomain)
+			}
+		}
+	}
+
+
+
 	if *cpuProfile {
 		defer profile.Start(profile.CPUProfile, profile.ProfilePath(".")).Stop()
 	}
@@ -268,15 +304,6 @@ func main() {
 	filepaths, err := getFilesForPath(inputPath)
 	if err != nil {
 		log.Fatalf("Unable to get files for path %s", inputPath)
-	}
-
-	baseDomains := []string{
-		"www.google.com",
-		"www.youtube.com",
-		"www.tmall.com",
-		"www.facebook.com",
-		"www.baidu.com",
-		"www.apple.com",
 	}
 
 	log.Info("building domain labelers")
