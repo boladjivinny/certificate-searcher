@@ -196,9 +196,13 @@ func processCertificates(dataRows chan []string, outputStrings chan string, labe
 		leafCert := certChain[0]
 
 		for _, name := range leafCert.DNSNames {
-			labels := labelers[0].LabelDomain(name)
-			if len(labels) > 0 {
-				outputStrings <- labels[0].String()
+			for _, labeler := range labelers {
+				labels := labeler.LabelDomain(name)
+				if len(labels) > 0 {
+					for _, label := range labels {
+						outputStrings <- label.String() + ":" + certB64
+					}
+				}
 			}
 		}
 	}
@@ -307,10 +311,13 @@ func main() {
 	}
 
 	log.Info("building domain labelers")
-	tsl := cs.NewTypoSquattingLabeler(&baseDomains)
-	// TODO: Build suite of domain checkers
-	domainLabelers := make([]cs.DomainLabeler, 0)
-	domainLabelers = append(domainLabelers, tsl)
+	typoSquattingLabeler := cs.NewTypoSquattingLabeler(&baseDomains)
+	targetEmbeddingLabeler := cs.NewTargetEmbeddingLabeler(&baseDomains)
+
+	domainLabelers := []cs.DomainLabeler{
+		typoSquattingLabeler,
+		targetEmbeddingLabeler,
+	}
 
 	dataRows := make(chan []string, *workerCount)
 	readWG := &sync.WaitGroup{}

@@ -1,6 +1,7 @@
 package certificate_searcher
 
 import (
+	"regexp"
 	"strings"
 	"unicode"
 )
@@ -35,7 +36,22 @@ const (
 )
 
 func (dl DomainLabel) String() string {
-	return [...]string{"Unlabeled", "TYPOSQUATTING_MISSING_DOT", "TYPOSQUATTING_CHAR_OMISSION"}[dl]
+	return [...]string{
+		"Unlabeled",
+		"TYPOSQUATTING_MISSING_DOT",
+		"TYPOSQUATTING_CHAR_OMISSION",
+		"TYPOSQUATTING_CHAR_PERMUTATION",
+		"TYPOSQUATTING_CHAR_SUBSTITUTION",
+		"TYPOSQUATTING_CHAR_DUPLICATION",
+		"TARGET_EMBEDDING",
+		"COMBOSQUATTING",
+		"HOMOGRAPH",
+		"WRONGTLD",
+		"BITSQUATTING",
+		"PHISHTANK",
+		"SSL_BLACKLIST",
+		"GOOGLE_SAFEBROWSING",
+	}[dl]
 }
 
 type DomainLabeler interface {
@@ -148,4 +164,91 @@ func (t *TypoSquattingLabeler) LabelDomain(domain string) []DomainLabel {
 	}
 
 	return domainLabel
+}
+
+type TargetEmbeddingLabeler struct {
+	BaseDomains   *[]string
+	CombinedRegex *regexp.Regexp
+	RegexString   string
+}
+
+func NewTargetEmbeddingLabeler(baseDomains *[]string) *TargetEmbeddingLabeler {
+	tel := &TargetEmbeddingLabeler{
+		BaseDomains: baseDomains,
+	}
+
+	regexExpressions := make([]string, len(*baseDomains))
+	for idx, domain := range *baseDomains {
+		regexDomain := regexp.QuoteMeta(domain)
+		regexExpressions[idx] = `[-\.]?` + regexDomain + `[-\.]`
+	}
+	tel.RegexString = strings.Join(regexExpressions, "|")
+	tel.CombinedRegex = regexp.MustCompile(strings.Join(regexExpressions, "|"))
+
+	return tel
+}
+
+func (t *TargetEmbeddingLabeler) LabelDomain(domain string) []DomainLabel {
+	matches := t.CombinedRegex.FindAllString(domain, -1)
+	if matches != nil {
+		return []DomainLabel{TARGET_EMBEDDING}
+	}
+
+	return nil
+}
+
+type HomoGraphLabeler struct {
+}
+
+func NewHomoGraphLabeler(baseDomains *[]string) *HomoGraphLabeler {
+	tel := &HomoGraphLabeler{
+
+	}
+	return tel
+}
+
+func (t *HomoGraphLabeler) LabelDomain(domain string) {
+
+}
+
+type BitSquattingLabeler struct {
+}
+
+func NewBitSquattingLabeler(baseDomains *[]string) *BitSquattingLabeler {
+	tel := &BitSquattingLabeler{
+
+	}
+	return tel
+}
+
+func (t *BitSquattingLabeler) LabelDomain(domain string) {
+
+}
+
+type WrongTLDLabeler struct {
+}
+
+func NewWrongTLDLabeler(baseDomains *[]string) *WrongTLDLabeler {
+	tel := &WrongTLDLabeler{
+
+	}
+	return tel
+}
+
+func (t *WrongTLDLabeler) LabelDomain(domain string) {
+
+}
+
+type ComboSquattingLabeler struct {
+}
+
+func NewComboSquattingLabeler(baseDomains *[]string) *ComboSquattingLabeler {
+	tel := &ComboSquattingLabeler{
+
+	}
+	return tel
+}
+
+func (t *ComboSquattingLabeler) LabelDomain(domain string) {
+
 }

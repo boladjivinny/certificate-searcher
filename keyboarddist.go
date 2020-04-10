@@ -76,7 +76,7 @@ func init() {
 		for _, r2 := range asciiLowerAlphanumeric {
 			dist := qwertyCoordinates[r1].distance(qwertyCoordinates[r2])
 
-			if dist < 1.5 {
+			if dist > 0 && dist < 1.5 {
 				qwertyAdjacencyMatrix[r1][r2] = true
 				qwertyAdjacentRunes[r1] = append(qwertyAdjacentRunes[r1], r2)
 			}
