@@ -4,6 +4,7 @@ import (
 	"regexp"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 type DomainLabel int
@@ -212,17 +213,50 @@ func (t *HomoGraphLabeler) LabelDomain(domain string) {
 }
 
 type BitSquattingLabeler struct {
+	BaseDomains        *[]string
+	BitSquattedDomains map[string]struct{}
+}
+
+func uint8Exp2(pow int) uint8 {
+	output := uint8(1)
+	for i := 0; i < pow; i++ {
+		output = output * 2
+	}
+
+	return output
 }
 
 func NewBitSquattingLabeler(baseDomains *[]string) *BitSquattingLabeler {
-	tel := &BitSquattingLabeler{
-
+	bsl := &BitSquattingLabeler{
+		BaseDomains:        baseDomains,
+		BitSquattedDomains: make(map[string]struct{}),
 	}
-	return tel
+	for _, domain := range *baseDomains {
+		for idx := range domain {
+			for offset := 0; offset < 8; offset++ {
+				tempSlice := make([]byte, len(domain))
+				tempSlice = append(tempSlice, domain[:idx]...)
+				bitFlippedByte := uint8Exp2(offset) ^ domain[idx]
+				tempSlice = append(tempSlice, bitFlippedByte)
+				bitFlippedDomain :=append(tempSlice, domain[idx+1:]...)
+
+				if utf8.Valid(bitFlippedDomain) {
+					bsl.BitSquattedDomains[string(bitFlippedDomain)] = struct{}{}
+				}
+			}
+		}
+	}
+	return bsl
 }
 
-func (t *BitSquattingLabeler) LabelDomain(domain string) {
+func (b *BitSquattingLabeler) LabelDomain(domain string) []DomainLabel {
+	domainLabel := make([]DomainLabel, 0)
 
+	if _, present := b.BitSquattedDomains[domain]; present {
+		domainLabel = append(domainLabel, BITSQUATTING)
+	}
+
+	return domainLabel
 }
 
 type WrongTLDLabeler struct {
