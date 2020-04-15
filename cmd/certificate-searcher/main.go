@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/base64"
 	"encoding/csv"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"github.com/pkg/profile"
@@ -20,6 +21,17 @@ import (
 )
 
 var log *zap.SugaredLogger
+
+type LabeledCertChain struct {
+	AbuseLabels     []string          `json:"abuse_labels"`
+	Leaf            *x509.Certificate `json:"leaf,omitempty"`
+	LeafParent      *x509.Certificate `json:"leaf_parent,omitempty"`
+	Root            *x509.Certificate `json:"root,omitempty"`
+	ChainDepth      int               `json:"chain_depth,omitempty"`
+	ValidationLevel string            `json:"validation_level,omitempty"`
+	LeafValidLength int               `json:"leaf_valid_len,omitempty"`
+	MatchedDomains  string            `json:"matched_domains,omitempty"`
+}
 
 func initLogger() {
 	atom := zap.NewAtomicLevelAt(zap.InfoLevel)
@@ -141,7 +153,6 @@ func parseCertificateNamesOnly(bytes []byte) (*x509.Certificate, error) {
 			}
 		}
 
-
 	}
 
 	return cert, err
@@ -172,7 +183,40 @@ func decodeAndParseChain(encodedCertChain []string, parser *x509.CertParser, onl
 	return certChain, nil
 }
 
-func processCertificates(dataRows chan []string, outputStrings chan string, labelers []cs.DomainLabeler , onlyParseNames bool, wg *sync.WaitGroup) {
+func extractFeaturesToJSON(chain []*x509.Certificate, labels []string) (*LabeledCertChain, error) {
+	var leaf, leafParent *x509.Certificate
+	leaf = chain[0]
+	if len(chain) > 1 {
+		leafParent = chain[1]
+	}
+
+	certChain := &LabeledCertChain{
+		AbuseLabels: labels,
+		Leaf:        leaf,
+		LeafParent:  leafParent,
+		Root:        chain[len(chain)-1],
+		ChainDepth:  len(chain),
+	}
+
+	return certChain, nil
+}
+
+func prettyParseCertificate(encodedCertChain []string, parser *x509.CertParser, labels []string) string {
+	certChain, err := decodeAndParseChain(encodedCertChain, parser, false)
+	processedChain, err := extractFeaturesToJSON(certChain, labels)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	jsonBytes, err := json.Marshal(processedChain)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return string(jsonBytes) + "\n"
+}
+
+func processCertificates(dataRows chan []string, outputStrings chan string, labelers []cs.DomainLabeler, onlyParseNames bool, wg *sync.WaitGroup) {
 	const CERT_INDEX int = 1
 	const CHAIN_INDEX int = 3
 	const CHAIN_DELIMETER string = "|"
@@ -195,15 +239,25 @@ func processCertificates(dataRows chan []string, outputStrings chan string, labe
 
 		leafCert := certChain[0]
 
+		certLabelMap := make(map[cs.DomainLabel]struct{})
 		for _, name := range leafCert.DNSNames {
 			for _, labeler := range labelers {
 				labels := labeler.LabelDomain(name)
 				if len(labels) > 0 {
 					for _, label := range labels {
-						outputStrings <- label.String() + ":" + certB64
+						certLabelMap[label] = struct{}{}
 					}
 				}
 			}
+		}
+
+		if len(certLabelMap) > 0 {
+			certLabels := make([]string, 0)
+			for domainLabel, _ := range certLabelMap {
+				certLabels = append(certLabels, domainLabel.String())
+			}
+
+			outputStrings <- prettyParseCertificate(chainB64, parser, certLabels)
 		}
 	}
 
@@ -293,8 +347,6 @@ func main() {
 		}
 	}
 
-
-
 	if *cpuProfile {
 		defer profile.Start(profile.CPUProfile, profile.ProfilePath(".")).Stop()
 	}
@@ -311,16 +363,14 @@ func main() {
 	}
 
 	log.Info("building domain labelers")
-	typoSquattingLabeler := cs.NewTypoSquattingLabeler(&baseDomains)
-	targetEmbeddingLabeler := cs.NewTargetEmbeddingLabeler(&baseDomains)
-	homoGraphLabeler := cs.NewHomoGraphLabeler(&baseDomains)
-	bitSquattingLabeler := cs.NewBitSquattingLabeler(&baseDomains)
 
 	domainLabelers := []cs.DomainLabeler{
-		typoSquattingLabeler,
-		targetEmbeddingLabeler,
-		homoGraphLabeler,
-		bitSquattingLabeler,
+		cs.NewTypoSquattingLabeler(&baseDomains),
+		cs.NewTargetEmbeddingLabeler(&baseDomains),
+		cs.NewHomoGraphLabeler(&baseDomains),
+		cs.NewBitSquattingLabeler(&baseDomains),
+		cs.NewPhishTankLabeler(),
+		cs.NewSafeBrowsingLabeler(),
 	}
 
 	dataRows := make(chan []string, *workerCount)
