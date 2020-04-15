@@ -337,7 +337,7 @@ func main() {
 		baseDomains = make([]string, 0)
 		scanner := bufio.NewScanner(f)
 		for scanner.Scan() {
-			rawDomain := scanner.Text()
+			rawDomain := strings.TrimSpace(scanner.Text())
 			sanitizedDomain := strings.ToLower(rawDomain)
 			baseDomains = append(baseDomains, sanitizedDomain)
 
