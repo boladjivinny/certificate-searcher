@@ -277,7 +277,7 @@ func writeOutput(outputStrings chan string, outputFilename string, wg *sync.Wait
 		}
 	}
 
-	w := bufio.NewWriterSize(outputFile, 4096*50000)
+	w := bufio.NewWriterSize(outputFile, 4096*1000)
 
 	for output := range outputStrings {
 		w.WriteString(output + "\n")
