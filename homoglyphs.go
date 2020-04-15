@@ -14,6 +14,7 @@ import (
 )
 
 var GLYPH_TO_ASCII map[string][]rune
+var ASCII_HOMOGLYPHS []rune
 
 func runesContain(runes []rune, target rune) bool {
 	for _, r := range runes {
@@ -80,6 +81,10 @@ func addStringAscii(key string, ascii rune) {
 		return
 	}
 
+	if len(key) == 1 && validDomainChar(rune(key[0])) {
+		ASCII_HOMOGLYPHS = append(ASCII_HOMOGLYPHS, rune(key[0]))
+	}
+
 	if _, ok := GLYPH_TO_ASCII[key]; !ok {
 		GLYPH_TO_ASCII[key] = make([]rune, 0)
 		GLYPH_TO_ASCII[key] = append(GLYPH_TO_ASCII[key], ascii)
@@ -92,7 +97,7 @@ func addStringAscii(key string, ascii rune) {
 
 func init() {
 	GLYPH_TO_ASCII = make(map[string][]rune)
-
+	ASCII_HOMOGLYPHS = make([]rune, 0)
 	// https://github.com/reinderien/mimic/blob/master/mimic/__init__.py
 	// Map of all homoglyphs - named tuples with 'ascii' char, 'fwd' alternatives string for forward mimic mode, and 'rev'
 	// string of potentially non-universally-printable chars that should still be able to check or reverse back to ASCII
@@ -265,4 +270,42 @@ func init() {
 			}
 		}
 	}
+}
+
+func replaceRunes(base []rune, indexes []int, subs map[int][]rune) []string {
+	if len(indexes) == 0 {
+		return []string{string(base)}
+	}
+
+	replacements := make([]string, 0)
+	for i, idx := range indexes {
+		for subIdx, sub := range subs[idx] {
+			if subIdx == 0 {
+				base[idx] = subs[idx][subIdx]
+			} else {
+				new_base := make([]rune, len(base))
+				copy(new_base, base)
+				new_base[idx] = sub
+				replacements = append(replacements, replaceRunes(new_base, indexes[i+1:], subs)...)
+			}
+		}
+	}
+	replacements = append(replacements, string(base))
+	return replacements
+}
+
+func GetASCIIHomographs(unicodeDomain string) []string {
+	domainRunes := []rune(unicodeDomain)
+
+	idxSubstitutions := make(map[int][]rune)
+	indexes := make([]int, 0)
+	for idx, r := range domainRunes {
+		asciiValues, present := GLYPH_TO_ASCII[string(r)]
+		if present {
+			idxSubstitutions[idx] = asciiValues
+			indexes = append(indexes, idx)
+		}
+	}
+
+	return replaceRunes(domainRunes, indexes, idxSubstitutions)
 }

@@ -1,10 +1,12 @@
 package certificate_searcher
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 	"unicode"
 	"unicode/utf8"
+ 	"golang.org/x/net/idna"
 )
 
 type DomainLabel int
@@ -199,25 +201,51 @@ func (t *TargetEmbeddingLabeler) LabelDomain(domain string) []DomainLabel {
 }
 
 type HomoGraphLabeler struct {
-	BaseDomains *[]string
-	HomographDomains map[string]struct{}
+	BaseDomainMap map[string]struct{}
 }
 
 func NewHomoGraphLabeler(baseDomains *[]string) *HomoGraphLabeler {
-	hl := &HomoGraphLabeler{
-		BaseDomains: baseDomains,
-		HomographDomains: make(map[string]struct{}),
+	domains := make(map[string]struct{})
+
+	for _, domain := range *baseDomains {
+		domains[domain] = struct{}{}
 	}
 
-	//for idx, domain := range *baseDomains {
-	//
-	//}
+	hl := &HomoGraphLabeler{
+		BaseDomainMap: domains,
+	}
 
 	return hl
 }
 
-func (t *HomoGraphLabeler) LabelDomain(domain string) {
+func (t *HomoGraphLabeler) LabelDomain(domain string) []DomainLabel {
+	domain = strings.ToLower(domain)
+	IDN_ACE := "xn--" // IDN ASCII Compatible Encoding
+	hasPunycode := strings.Contains(domain, IDN_ACE)
+	hasASCIIHomograph := strings.ContainsAny(domain, string(ASCII_HOMOGLYPHS))
+	if !hasPunycode && !hasASCIIHomograph {
+		return []DomainLabel{}
+	}
 
+	var unicodeStr string
+	var err error
+	if hasPunycode {
+		p := idna.New()
+		unicodeStr, err = p.ToUnicode(domain)
+		if err != nil {
+			fmt.Printf("Error: invalid punycode: %s", domain)
+		}
+	} else {
+		unicodeStr = domain
+	}
+
+	for _, homograph := range GetASCIIHomographs(unicodeStr) {
+		if _, present := t.BaseDomainMap[homograph]; present {
+			return []DomainLabel{HOMOGRAPH}
+		}
+	}
+
+	return []DomainLabel{}
 }
 
 type BitSquattingLabeler struct {

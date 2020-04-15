@@ -313,11 +313,14 @@ func main() {
 	log.Info("building domain labelers")
 	typoSquattingLabeler := cs.NewTypoSquattingLabeler(&baseDomains)
 	targetEmbeddingLabeler := cs.NewTargetEmbeddingLabeler(&baseDomains)
-	log.Debug(cs.GLYPH_TO_ASCII)
+	homoGraphLabeler := cs.NewHomoGraphLabeler(&baseDomains)
+	bitSquattingLabeler := cs.NewBitSquattingLabeler(&baseDomains)
 
 	domainLabelers := []cs.DomainLabeler{
 		typoSquattingLabeler,
 		targetEmbeddingLabeler,
+		homoGraphLabeler,
+		bitSquattingLabeler,
 	}
 
 	dataRows := make(chan []string, *workerCount)
