@@ -213,7 +213,7 @@ func prettyParseCertificate(encodedCertChain []string, parser *x509.CertParser, 
 		log.Fatal(err)
 	}
 
-	return string(jsonBytes) + "\n"
+	return string(jsonBytes)
 }
 
 func processCertificates(dataRows chan []string, outputStrings chan string, labelers []cs.DomainLabeler, onlyParseNames bool, wg *sync.WaitGroup) {
