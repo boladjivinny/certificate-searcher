@@ -216,7 +216,7 @@ func prettyParseCertificate(encodedCertChain []string, parser *x509.CertParser, 
 	return string(jsonBytes)
 }
 
-func processCertificates(dataRows chan []string, outputStrings chan string, labelers []cs.DomainLabeler, onlyParseNames bool, wg *sync.WaitGroup) {
+func processCertificates(dataRows chan []string, outputStrings chan string, labelers []cs.DomainLabeler, onlyParseNames bool, baseDomains map[string]struct{},wg *sync.WaitGroup) {
 	const CERT_INDEX int = 1
 	const CHAIN_INDEX int = 3
 	const CHAIN_DELIMETER string = "|"
@@ -241,6 +241,10 @@ func processCertificates(dataRows chan []string, outputStrings chan string, labe
 
 		certLabelMap := make(map[cs.DomainLabel]struct{})
 		for _, name := range leafCert.DNSNames {
+			if _, present := baseDomains[name]; present {
+				continue
+			}
+
 			for _, labeler := range labelers {
 				labels := labeler.LabelDomain(name)
 				if len(labels) > 0 {
@@ -346,6 +350,11 @@ func main() {
 			}
 		}
 	}
+	baseDomainMap := make(map[string]struct{})
+	for _, domain := range baseDomains {
+		baseDomainMap[domain] = struct{}{}
+	}
+
 
 	if *cpuProfile {
 		defer profile.Start(profile.CPUProfile, profile.ProfilePath(".")).Stop()
@@ -382,7 +391,7 @@ func main() {
 	workerWG := &sync.WaitGroup{}
 	for i := 0; i < *workerCount; i++ {
 		workerWG.Add(1)
-		go processCertificates(dataRows, outputStrings, domainLabelers, *namesOnly, workerWG)
+		go processCertificates(dataRows, outputStrings, domainLabelers, *namesOnly, baseDomainMap, workerWG)
 	}
 
 	writeWG := &sync.WaitGroup{}
