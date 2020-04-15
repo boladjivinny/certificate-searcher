@@ -22,7 +22,7 @@ import (
 var log *zap.SugaredLogger
 
 func initLogger() {
-	atom := zap.NewAtomicLevelAt(zap.DebugLevel)
+	atom := zap.NewAtomicLevelAt(zap.InfoLevel)
 	logger := zap.New(zapcore.NewCore(
 		zapcore.NewConsoleEncoder(zap.NewDevelopmentEncoderConfig()),
 		zapcore.Lock(os.Stdout),
@@ -313,6 +313,7 @@ func main() {
 	log.Info("building domain labelers")
 	typoSquattingLabeler := cs.NewTypoSquattingLabeler(&baseDomains)
 	targetEmbeddingLabeler := cs.NewTargetEmbeddingLabeler(&baseDomains)
+	log.Debug(cs.GLYPH_TO_ASCII)
 
 	domainLabelers := []cs.DomainLabeler{
 		typoSquattingLabeler,

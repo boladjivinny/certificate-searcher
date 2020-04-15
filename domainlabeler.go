@@ -199,13 +199,21 @@ func (t *TargetEmbeddingLabeler) LabelDomain(domain string) []DomainLabel {
 }
 
 type HomoGraphLabeler struct {
+	BaseDomains *[]string
+	HomographDomains map[string]struct{}
 }
 
 func NewHomoGraphLabeler(baseDomains *[]string) *HomoGraphLabeler {
-	tel := &HomoGraphLabeler{
-
+	hl := &HomoGraphLabeler{
+		BaseDomains: baseDomains,
+		HomographDomains: make(map[string]struct{}),
 	}
-	return tel
+
+	//for idx, domain := range *baseDomains {
+	//
+	//}
+
+	return hl
 }
 
 func (t *HomoGraphLabeler) LabelDomain(domain string) {
