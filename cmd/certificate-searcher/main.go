@@ -380,7 +380,7 @@ func main() {
 	domainLabelers := []cs.DomainLabeler{
 		cs.NewTypoSquattingLabeler(&baseDomains),
 		cs.NewTargetEmbeddingLabeler(&baseDomains),
-		cs.NewHomoGraphLabeler(&baseDomains),
+		//cs.NewHomoGraphLabeler(&baseDomains), //TODO: fix issues with aa2.csv
 		cs.NewBitSquattingLabeler(&baseDomains),
 		cs.NewPhishTankLabeler(),
 		cs.NewSafeBrowsingLabeler(),
