@@ -13,6 +13,7 @@ import (
 	"github.com/teamnsrg/zcrypto/x509/pkix"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"io"
 	"io/ioutil"
 	"os"
 	"runtime"
@@ -108,10 +109,14 @@ func readCSVFiles(filepaths []string, dataRows chan []string, wg *sync.WaitGroup
 
 		reader := csv.NewReader(f)
 
-		records, err := reader.ReadAll()
-		for _, line := range records {
-			dataRows <- line
+		var record []string
+		for record, err = reader.Read(); err == nil; record, err = reader.Read() {
+			dataRows <- record
 		}
+		if err != io.EOF {
+			log.Error(err)
+		}
+		
 		f.Close()
 	}
 	wg.Done()
