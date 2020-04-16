@@ -105,7 +105,6 @@ func readCSVFiles(filepaths []string, dataRows chan []string, wg *sync.WaitGroup
 			log.Error(err)
 			continue
 		}
-		defer f.Close()
 
 		reader := csv.NewReader(f)
 
@@ -113,7 +112,7 @@ func readCSVFiles(filepaths []string, dataRows chan []string, wg *sync.WaitGroup
 		for _, line := range records {
 			dataRows <- line
 		}
-
+		f.Close()
 	}
 	wg.Done()
 }
