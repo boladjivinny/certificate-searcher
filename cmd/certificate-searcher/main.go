@@ -377,6 +377,9 @@ func main() {
 
 	log.Info("building domain labelers")
 
+	dl := cs.NewWrongTLDLabeler(&baseDomains)
+	log.Info(dl.WrongTLDDomains)
+
 	domainLabelers := []cs.DomainLabeler{
 		cs.NewTypoSquattingLabeler(&baseDomains),
 		cs.NewTargetEmbeddingLabeler(&baseDomains),
