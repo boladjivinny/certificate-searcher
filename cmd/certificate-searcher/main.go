@@ -377,9 +377,6 @@ func main() {
 
 	log.Info("building domain labelers")
 
-	dl := cs.NewWrongTLDLabeler(&baseDomains)
-	log.Info(dl.WrongTLDDomains)
-
 	domainLabelers := []cs.DomainLabeler{
 		cs.NewTypoSquattingLabeler(&baseDomains),
 		cs.NewTargetEmbeddingLabeler(&baseDomains),
@@ -387,6 +384,7 @@ func main() {
 		cs.NewBitSquattingLabeler(&baseDomains),
 		cs.NewPhishTankLabeler(),
 		cs.NewSafeBrowsingLabeler(),
+		cs.NewWrongTLDLabeler(&baseDomains),
 	}
 
 	dataRows := make(chan []string, *workerCount)
