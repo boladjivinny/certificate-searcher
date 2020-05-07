@@ -16,7 +16,6 @@ weibo.com
 netflix.com
 login.tmall.com
 twitch.tv
-blogspot.com
 pornhub.com
 yahoo.co.jp
 livejasmin.com
@@ -217,7 +216,6 @@ www.weibo.com
 www.netflix.com
 www.login.tmall.com
 www.twitch.tv
-www.blogspot.com
 www.pornhub.com
 www.yahoo.co.jp
 www.livejasmin.com

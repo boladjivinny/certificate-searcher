@@ -20,4 +20,5 @@
 cmd/*
 !cmd/*/*.go
 
-
+# vim backup files
+*.swp
