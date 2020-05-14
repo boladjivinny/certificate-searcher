@@ -4,16 +4,20 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"golang.org/x/net/idna"
 	"io/ioutil"
+	"log"
 	"os"
 	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"unicode"
 )
 
 var GLYPH_TO_ASCII map[string][]rune
+var ASCII_TO_GLYPH map[rune][]rune
 var ASCII_HOMOGLYPHS []rune
 
 func runesContain(runes []rune, target rune) bool {
@@ -92,11 +96,29 @@ func addStringAscii(key string, ascii rune) {
 		//fmt.Printf("Multiple mapping %s: %q and %q\n", key, ascii, GLYPH_TO_ASCII[key])
 		GLYPH_TO_ASCII[key] = append(GLYPH_TO_ASCII[key], ascii)
 	}
+}
 
+func addAsciiString(ascii rune, glyph rune) {
+	ascii = unicode.ToLower(ascii)
+
+	if ascii > unicode.MaxASCII {
+		panic(fmt.Sprintf("Invalid ascii value %q", ascii))
+	}
+
+	if !validDomainChar(ascii) {
+		return
+	}
+	if _, present := ASCII_TO_GLYPH[ascii]; !present {
+		ASCII_TO_GLYPH[ascii] = make([]rune, 0)
+		ASCII_TO_GLYPH[ascii] = append(ASCII_TO_GLYPH[ascii], glyph)
+	} else if !runesContain(ASCII_TO_GLYPH[ascii], glyph) {
+		ASCII_TO_GLYPH[ascii] = append(ASCII_TO_GLYPH[ascii], glyph)
+	}
 }
 
 func init() {
 	GLYPH_TO_ASCII = make(map[string][]rune)
+	ASCII_TO_GLYPH = make(map[rune][]rune)
 	ASCII_HOMOGLYPHS = make([]rune, 0)
 	// https://github.com/reinderien/mimic/blob/master/mimic/__init__.py
 	// Map of all homoglyphs - named tuples with 'ascii' char, 'fwd' alternatives string for forward mimic mode, and 'rev'
@@ -204,6 +226,7 @@ func init() {
 		runes := []rune(glyphs[0]) // ignore loosely-related reverse glyphs
 		for _, r := range runes {
 			addStringAscii(string(r), ascii)
+			addAsciiString(ascii, r)
 		}
 	}
 
@@ -240,6 +263,7 @@ func init() {
 			}
 
 			addStringAscii(str, ascii)
+			//addAsciiString(ascii, []rune(str)[0])
 		}
 	}
 
@@ -267,6 +291,7 @@ func init() {
 
 			for _, asciiIdx := range asciiIdxs {
 				addStringAscii(string(r), runes[asciiIdx])
+				addAsciiString(runes[asciiIdx], r)
 			}
 		}
 	}
@@ -308,4 +333,42 @@ func GetASCIIHomographs(unicodeDomain string) []string {
 	}
 
 	return replaceRunes(domainRunes, indexes, idxSubstitutions)
+}
+
+func homoglyphPermutations(ch chan<- Mutation, unicodeDomain string, wg *sync.WaitGroup, startInd, depth, maxDepth int) {
+	if depth >= maxDepth || startInd >= len(unicodeDomain) {
+		wg.Done()
+		return
+	}
+
+	domainRunes := []rune(unicodeDomain)
+	for idx, r := range domainRunes {
+		if idx < startInd {
+			continue
+		}
+		asciiValues, present := ASCII_TO_GLYPH[r]
+		if present {
+			for _, homoRune := range asciiValues {
+				tempSlice := append(make([]rune, 0), domainRunes[:idx]...)
+				tempSlice = append(tempSlice, homoRune)
+				newString := string(append(tempSlice, domainRunes[idx+1:]...))
+				newPunycode, err := idna.ToASCII(newString)
+				if err != nil {
+					log.Fatalf("Unable to convert %s to punycode: %s", newString, err.Error())
+				}
+				ch <- Mutation(newPunycode)
+				wg.Add(1)
+				go homoglyphPermutations(ch, newString, wg, idx+1, depth+1, maxDepth)
+			}
+		}
+	}
+	wg.Done()
+}
+
+func GenerateASCIIHomographs(mutations chan<- Mutation, unicodeDomain string, maxHomoglyphSubs int) {
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+	go homoglyphPermutations(mutations, unicodeDomain, wg, 0, 0, maxHomoglyphSubs)
+	wg.Wait()
+	close(mutations)
 }

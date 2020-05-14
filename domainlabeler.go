@@ -2,7 +2,7 @@ package certificate_searcher
 
 import (
 	"bufio"
-	"fmt"
+	"github.com/src-d/go-oniguruma"
 	"golang.org/x/net/idna"
 	"golang.org/x/net/publicsuffix"
 	"log"
@@ -10,7 +10,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"regexp"
 	"runtime"
 	"strings"
 	"unicode"
@@ -67,6 +66,7 @@ func (dl DomainLabel) String() string {
 
 type DomainLabeler interface {
 	LabelDomain(domain string) []DomainLabel
+	//LabelDomain(domain string) map[DomainLabel][]string
 }
 
 type BaseDomains map[string]struct{}
@@ -206,7 +206,7 @@ func (t * TypoSquattingLabeler) GetMutations() MutatedDomains {
 
 type TargetEmbeddingLabeler struct {
 	BaseDomains   *[]string
-	CombinedRegex *regexp.Regexp
+	CombinedRegex *rubex.Regexp
 	RegexString   string
 }
 
@@ -217,18 +217,18 @@ func NewTargetEmbeddingLabeler(baseDomains *[]string) *TargetEmbeddingLabeler {
 
 	regexExpressions := make([]string, len(*baseDomains))
 	for idx, domain := range *baseDomains {
-		regexDomain := regexp.QuoteMeta(domain)
-		regexExpressions[idx] = `[-\.]?` + regexDomain + `[-\.]`
+		regexDomain := rubex.QuoteMeta(domain)
+		regexExpressions[idx] = `(?:[-\.]|^)` + regexDomain + `[-\.]`
 	}
 	tel.RegexString = strings.Join(regexExpressions, "|")
-	tel.CombinedRegex = regexp.MustCompile(strings.Join(regexExpressions, "|"))
+	tel.CombinedRegex = rubex.MustCompile(strings.Join(regexExpressions, "|"))
 
 	return tel
 }
 
 func (t *TargetEmbeddingLabeler) LabelDomain(domain string) []DomainLabel {
-	matches := t.CombinedRegex.FindAllString(domain, -1)
-	if matches != nil {
+	matches := t.CombinedRegex.FindString(domain)
+	if len(matches) > 0 {
 		return []DomainLabel{TARGET_EMBEDDING}
 	}
 
@@ -237,50 +237,46 @@ func (t *TargetEmbeddingLabeler) LabelDomain(domain string) []DomainLabel {
 
 type HomoGraphLabeler struct {
 	BaseDomainMap map[string]struct{}
+	HomographDomains MutatedDomains
 }
 
+/*
+Ingests an array of unicode strings, and generates a list of
+punycode (ASCII) homographs for labeling domains.
+*/
 func NewHomoGraphLabeler(baseDomains *[]string) *HomoGraphLabeler {
 	domains := make(map[string]struct{})
+	hl := &HomoGraphLabeler{
+		HomographDomains: make(MutatedDomains),
+	}
 
 	for _, domain := range *baseDomains {
+		mutations := make(chan Mutation)
 		domains[domain] = struct{}{}
+		go GenerateASCIIHomographs(mutations, domain, 2)
+
+		for mutation := range mutations {
+			if _, present := hl.HomographDomains[mutation]; !present {
+				hl.HomographDomains[mutation] = make(BaseDomains)
+			}
+			hl.HomographDomains[mutation][domain] = struct{}{}
+		}
 	}
 
-	hl := &HomoGraphLabeler{
-		BaseDomainMap: domains,
-	}
+	hl.BaseDomainMap = domains
 
 	return hl
 }
 
 func (t *HomoGraphLabeler) LabelDomain(domain string) []DomainLabel {
-	domain = strings.ToLower(domain)
-	IDN_ACE := "xn--" // IDN ASCII Compatible Encoding
-	hasPunycode := strings.Contains(domain, IDN_ACE)
-	hasASCIIHomograph := strings.ContainsAny(domain, string(ASCII_HOMOGLYPHS))
-	if !hasPunycode && !hasASCIIHomograph {
-		return []DomainLabel{}
+	domainLabel := make([]DomainLabel, 0)
+	mutation := Mutation(domain)
+
+	if _, present := t.HomographDomains[mutation]; present {
+		domainLabel = append(domainLabel, HOMOGRAPH)
 	}
 
-	var unicodeStr string
-	var err error
-	if hasPunycode {
-		p := idna.New()
-		unicodeStr, err = p.ToUnicode(domain)
-		if err != nil {
-			fmt.Printf("Error: invalid punycode: %s", domain)
-		}
-	} else {
-		unicodeStr = domain
-	}
-
-	for _, homograph := range GetASCIIHomographs(unicodeStr) {
-		if _, present := t.BaseDomainMap[homograph]; present {
-			return []DomainLabel{HOMOGRAPH}
-		}
-	}
-
-	return []DomainLabel{}
+	return domainLabel
 }
 
 type BitSquattingLabeler struct {

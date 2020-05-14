@@ -259,6 +259,7 @@ func processCertificates(dataRows chan []string, outputStrings chan string, labe
 			}
 		}
 
+
 		if len(certLabelMap) > 0 {
 			certLabels := make([]string, 0)
 			for domainLabel, _ := range certLabelMap {
@@ -380,7 +381,7 @@ func main() {
 	domainLabelers := []cs.DomainLabeler{
 		cs.NewTypoSquattingLabeler(&baseDomains),
 		cs.NewTargetEmbeddingLabeler(&baseDomains),
-		//cs.NewHomoGraphLabeler(&baseDomains), //TODO: fix issues with aa2.csv
+		cs.NewHomoGraphLabeler(&baseDomains),
 		cs.NewBitSquattingLabeler(&baseDomains),
 		cs.NewPhishTankLabeler(),
 		cs.NewSafeBrowsingLabeler(),
