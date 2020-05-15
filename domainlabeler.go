@@ -2,6 +2,8 @@ package certificate_searcher
 
 import (
 	"bufio"
+	"encoding/json"
+	"fmt"
 	"github.com/src-d/go-oniguruma"
 	"golang.org/x/net/idna"
 	"golang.org/x/net/publicsuffix"
@@ -17,6 +19,16 @@ import (
 )
 
 type DomainLabel int
+type LabelsSources map[DomainLabel][]string
+
+func (ls LabelsSources) MarshalJSON() ([]byte, error) {
+	stringLabels := make(map[string][]string)
+	for dl, slice := range ls {
+		stringLabels[dl.String()] = slice
+	}
+
+	return json.Marshal(stringLabels)
+}
 
 const (
 	// No identifiable label
@@ -64,9 +76,14 @@ func (dl DomainLabel) String() string {
 	}[dl]
 }
 
+func (dl *DomainLabel) MarshalJSON() ([]byte, error) {
+	fmt.Println("Marshalling %d", dl)
+	return []byte(dl.String()), nil
+}
+
 type DomainLabeler interface {
-	LabelDomain(domain string) []DomainLabel
-	//LabelDomain(domain string) map[DomainLabel][]string
+	//LabelDomain(domain string) []DomainLabel
+	LabelDomain(domain string) map[DomainLabel][]string
 }
 
 type BaseDomains map[string]struct{}
@@ -177,27 +194,42 @@ func NewTypoSquattingLabeler(baseDomains *[]string) *TypoSquattingLabeler {
 	return tsl
 }
 
-func (t *TypoSquattingLabeler) LabelDomain(domain string) []DomainLabel {
-	domainLabel := make([]DomainLabel, 0)
+func (t *TypoSquattingLabeler) LabelDomain(domain string) map[DomainLabel][]string {
+	domainLabels := make(map[DomainLabel][]string)
 	mutation := Mutation(domain)
 
 	if _, present := t.MissingDotDomains[mutation]; present {
-		domainLabel = append(domainLabel, TYPOSQUATTING_MISSING_DOT)
+		domainLabels[TYPOSQUATTING_MISSING_DOT] = make([]string, 0)
+		for k, _ := range t.MissingDotDomains[mutation] {
+			domainLabels[TYPOSQUATTING_MISSING_DOT] = append(domainLabels[TYPOSQUATTING_MISSING_DOT], k)
+		}
 	}
 	if _, present := t.CharOmissionDomains[mutation]; present {
-		domainLabel = append(domainLabel, TYPOSQUATTING_CHAR_OMISSION)
+		domainLabels[TYPOSQUATTING_CHAR_OMISSION] = make([]string, 0)
+		for k, _ := range t.CharOmissionDomains[mutation] {
+			domainLabels[TYPOSQUATTING_CHAR_OMISSION] = append(domainLabels[TYPOSQUATTING_CHAR_OMISSION], k)
+		}
 	}
 	if _, present := t.CharPermutationDomains[mutation]; present {
-		domainLabel = append(domainLabel, TYPOSQUATTING_CHAR_PERMUTATION)
+		domainLabels[TYPOSQUATTING_CHAR_PERMUTATION] = make([]string, 0)
+		for k, _ := range t.CharPermutationDomains[mutation] {
+			domainLabels[TYPOSQUATTING_CHAR_PERMUTATION] = append(domainLabels[TYPOSQUATTING_CHAR_PERMUTATION], k)
+		}
 	}
 	if _, present := t.CharDuplicationDomains[mutation]; present {
-		domainLabel = append(domainLabel, TYPOSQUATTING_CHAR_DUPLICATION)
+		domainLabels[TYPOSQUATTING_CHAR_DUPLICATION] = make([]string, 0)
+		for k, _ := range t.CharDuplicationDomains[mutation] {
+			domainLabels[TYPOSQUATTING_CHAR_DUPLICATION] = append(domainLabels[TYPOSQUATTING_CHAR_DUPLICATION], k)
+		}
 	}
 	if _, present := t.CharSubstitutionDomains[mutation]; present {
-		domainLabel = append(domainLabel, TYPOSQUATTING_CHAR_SUBSTITUTION)
+		domainLabels[TYPOSQUATTING_CHAR_SUBSTITUTION] = make([]string, 0)
+		for k, _ := range t.CharSubstitutionDomains[mutation] {
+			domainLabels[TYPOSQUATTING_CHAR_SUBSTITUTION] = append(domainLabels[TYPOSQUATTING_CHAR_SUBSTITUTION], k)
+		}
 	}
 
-	return domainLabel
+	return domainLabels
 }
 
 func (t * TypoSquattingLabeler) GetMutations() MutatedDomains {
@@ -226,13 +258,15 @@ func NewTargetEmbeddingLabeler(baseDomains *[]string) *TargetEmbeddingLabeler {
 	return tel
 }
 
-func (t *TargetEmbeddingLabeler) LabelDomain(domain string) []DomainLabel {
-	matches := t.CombinedRegex.FindString(domain)
-	if len(matches) > 0 {
-		return []DomainLabel{TARGET_EMBEDDING}
+func (t *TargetEmbeddingLabeler) LabelDomain(domain string) map[DomainLabel][]string {
+	firstMatch := t.CombinedRegex.FindString(domain)
+	if len(firstMatch) > 0 {
+		return map[DomainLabel][]string{
+			TARGET_EMBEDDING: {firstMatch},
+		}
 	}
 
-	return nil
+	return make(map[DomainLabel][]string)
 }
 
 type HomoGraphLabeler struct {
@@ -268,15 +302,18 @@ func NewHomoGraphLabeler(baseDomains *[]string) *HomoGraphLabeler {
 	return hl
 }
 
-func (t *HomoGraphLabeler) LabelDomain(domain string) []DomainLabel {
-	domainLabel := make([]DomainLabel, 0)
+func (t *HomoGraphLabeler) LabelDomain(domain string) map[DomainLabel][]string {
+	domainLabels := make(map[DomainLabel][]string)
 	mutation := Mutation(domain)
 
 	if _, present := t.HomographDomains[mutation]; present {
-		domainLabel = append(domainLabel, HOMOGRAPH)
+		domainLabels[HOMOGRAPH] = make([]string, 0)
+		for k, _ := range t.HomographDomains[mutation] {
+			domainLabels[HOMOGRAPH] = append(domainLabels[HOMOGRAPH], k)
+		}
 	}
 
-	return domainLabel
+	return domainLabels
 }
 
 type BitSquattingLabeler struct {
@@ -317,15 +354,18 @@ func NewBitSquattingLabeler(baseDomains *[]string) *BitSquattingLabeler {
 	return bsl
 }
 
-func (b *BitSquattingLabeler) LabelDomain(domain string) []DomainLabel {
-	domainLabel := make([]DomainLabel, 0)
+func (b *BitSquattingLabeler) LabelDomain(domain string) map[DomainLabel][]string {
+	domainLabels := make(map[DomainLabel][]string)
 	mutation := Mutation(domain)
 
 	if _, present := b.BitSquattedDomains[mutation]; present {
-		domainLabel = append(domainLabel, BITSQUATTING)
+		domainLabels[BITSQUATTING] = make([]string, 0)
+		for k, _ := range b.BitSquattedDomains[mutation] {
+			domainLabels[BITSQUATTING] = append(domainLabels[BITSQUATTING], k)
+		}
 	}
 
-	return domainLabel
+	return domainLabels
 }
 
 func (b *BitSquattingLabeler) GetMutations() MutatedDomains {
@@ -390,15 +430,18 @@ func NewWrongTLDLabeler(baseDomains *[]string) *WrongTLDLabeler {
 	return wtl
 }
 
-func (w *WrongTLDLabeler) LabelDomain(domain string) []DomainLabel {
-	domainLabel := make([]DomainLabel, 0)
+func (w *WrongTLDLabeler) LabelDomain(domain string) map[DomainLabel][]string {
+	domainLabels := make(map[DomainLabel][]string)
 	mutation := Mutation(domain)
 
 	if _, present := w.WrongTLDDomains[mutation]; present {
-		domainLabel = append(domainLabel, WRONGTLD)
+		domainLabels[WRONGTLD] = make([]string, 0)
+		for k, _ := range w.WrongTLDDomains[mutation] {
+			domainLabels[WRONGTLD] = append(domainLabels[WRONGTLD], k)
+		}
 	}
 
-	return domainLabel
+	return domainLabels
 }
 
 func (w *WrongTLDLabeler) GetMutations() MutatedDomains {
@@ -452,12 +495,14 @@ func NewPhishTankLabeler() *PhishTankLabeler {
 	return ptl
 }
 
-func (p *PhishTankLabeler) LabelDomain(domain string) []DomainLabel {
+func (p *PhishTankLabeler) LabelDomain(domain string) map[DomainLabel][]string {
+	domainLabels := make(map[DomainLabel][]string)
+
 	if _, present := p.blacklistedDomains[domain]; present {
-		return []DomainLabel{PHISHTANK}
+		domainLabels[PHISHTANK] = nil
 	}
 
-	return []DomainLabel{}
+	return domainLabels
 }
 
 type SafeBrowsingLabeler struct {
@@ -492,10 +537,12 @@ func NewSafeBrowsingLabeler() *SafeBrowsingLabeler {
 	return ptl
 }
 
-func (p *SafeBrowsingLabeler) LabelDomain(domain string) []DomainLabel {
+func (p *SafeBrowsingLabeler) LabelDomain(domain string) map[DomainLabel][]string {
+	domainLabels := make(map[DomainLabel][]string)
+
 	if _, present := p.blacklistedDomains[domain]; present {
-		return []DomainLabel{GOOGLE_SAFEBROWSING}
+		domainLabels[GOOGLE_SAFEBROWSING] = nil
 	}
 
-	return []DomainLabel{}
+	return domainLabels
 }

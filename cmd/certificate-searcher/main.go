@@ -24,14 +24,14 @@ import (
 var log *zap.SugaredLogger
 
 type LabeledCertChain struct {
-	AbuseLabels     []string          `json:"abuse_labels"`
-	Leaf            *x509.Certificate `json:"leaf,omitempty"`
-	LeafParent      *x509.Certificate `json:"leaf_parent,omitempty"`
-	Root            *x509.Certificate `json:"root,omitempty"`
-	ChainDepth      int               `json:"chain_depth,omitempty"`
-	ValidationLevel string            `json:"validation_level,omitempty"`
-	LeafValidLength int               `json:"leaf_valid_len,omitempty"`
-	MatchedDomains  string            `json:"matched_domains,omitempty"`
+	AbuseDomains    map[string]cs.LabelsSources `json:"abuse_domains"`
+	Leaf            *x509.Certificate              `json:"leaf,omitempty"`
+	LeafParent      *x509.Certificate              `json:"leaf_parent,omitempty"`
+	Root            *x509.Certificate              `json:"root,omitempty"`
+	ChainDepth      int                            `json:"chain_depth,omitempty"`
+	ValidationLevel string                         `json:"validation_level,omitempty"`
+	LeafValidLength int                            `json:"leaf_valid_len,omitempty"`
+	MatchedDomains  string                         `json:"matched_domains,omitempty"`
 }
 
 func initLogger() {
@@ -116,7 +116,7 @@ func readCSVFiles(filepaths []string, dataRows chan []string, wg *sync.WaitGroup
 		if err != io.EOF {
 			log.Error(err)
 		}
-		
+
 		f.Close()
 	}
 	wg.Done()
@@ -187,15 +187,20 @@ func decodeAndParseChain(encodedCertChain []string, parser *x509.CertParser, onl
 	return certChain, nil
 }
 
-func extractFeaturesToJSON(chain []*x509.Certificate, labels []string) (*LabeledCertChain, error) {
+func extractFeaturesToJSON(chain []*x509.Certificate, labels map[string]cs.LabelsSources) (*LabeledCertChain, error) {
 	var leaf, leafParent *x509.Certificate
 	leaf = chain[0]
 	if len(chain) > 1 {
 		leafParent = chain[1]
 	}
 
+	//stringLabels := make(map[string]map[string][]string)
+	//for dl, slice := range labels {
+	//	stringLabels[dl.String()] = slice
+	//}
+
 	certChain := &LabeledCertChain{
-		AbuseLabels: labels,
+		AbuseDomains: labels,
 		Leaf:        leaf,
 		LeafParent:  leafParent,
 		Root:        chain[len(chain)-1],
@@ -205,7 +210,7 @@ func extractFeaturesToJSON(chain []*x509.Certificate, labels []string) (*Labeled
 	return certChain, nil
 }
 
-func prettyParseCertificate(encodedCertChain []string, parser *x509.CertParser, labels []string) string {
+func prettyParseCertificate(encodedCertChain []string, parser *x509.CertParser, labels map[string]cs.LabelsSources) string {
 	certChain, err := decodeAndParseChain(encodedCertChain, parser, false)
 	processedChain, err := extractFeaturesToJSON(certChain, labels)
 	if err != nil {
@@ -220,7 +225,7 @@ func prettyParseCertificate(encodedCertChain []string, parser *x509.CertParser, 
 	return string(jsonBytes)
 }
 
-func processCertificates(dataRows chan []string, outputStrings chan string, labelers []cs.DomainLabeler, onlyParseNames bool, baseDomains map[string]struct{},wg *sync.WaitGroup) {
+func processCertificates(dataRows chan []string, outputStrings chan string, labelers []cs.DomainLabeler, onlyParseNames bool, baseDomains map[string]struct{}, wg *sync.WaitGroup) {
 	const CERT_INDEX int = 1
 	const CHAIN_INDEX int = 3
 	const CHAIN_DELIMETER string = "|"
@@ -243,7 +248,7 @@ func processCertificates(dataRows chan []string, outputStrings chan string, labe
 
 		leafCert := certChain[0]
 
-		certLabelMap := make(map[cs.DomainLabel]struct{})
+		maldomainLabels := make(map[string]cs.LabelsSources)
 		for _, name := range leafCert.DNSNames {
 			if _, present := baseDomains[name]; present {
 				continue
@@ -252,21 +257,19 @@ func processCertificates(dataRows chan []string, outputStrings chan string, labe
 			for _, labeler := range labelers {
 				labels := labeler.LabelDomain(name)
 				if len(labels) > 0 {
-					for _, label := range labels {
-						certLabelMap[label] = struct{}{}
+					if _, present := maldomainLabels[name]; !present {
+						maldomainLabels[name] = make(cs.LabelsSources)
+					}
+
+					for label, baseDomains := range labels {
+						maldomainLabels[name][label] = baseDomains
 					}
 				}
 			}
 		}
 
-
-		if len(certLabelMap) > 0 {
-			certLabels := make([]string, 0)
-			for domainLabel, _ := range certLabelMap {
-				certLabels = append(certLabels, domainLabel.String())
-			}
-
-			outputStrings <- prettyParseCertificate(chainB64, parser, certLabels)
+		if len(maldomainLabels) > 0 {
+			outputStrings <- prettyParseCertificate(chainB64, parser, maldomainLabels)
 		}
 	}
 
@@ -360,7 +363,6 @@ func main() {
 		baseDomainMap[domain] = struct{}{}
 	}
 
-
 	if *cpuProfile {
 		defer profile.Start(profile.CPUProfile, profile.ProfilePath(".")).Stop()
 	}
@@ -383,9 +385,9 @@ func main() {
 		cs.NewTargetEmbeddingLabeler(&baseDomains),
 		cs.NewHomoGraphLabeler(&baseDomains),
 		cs.NewBitSquattingLabeler(&baseDomains),
+		cs.NewWrongTLDLabeler(&baseDomains),
 		cs.NewPhishTankLabeler(),
 		cs.NewSafeBrowsingLabeler(),
-		cs.NewWrongTLDLabeler(&baseDomains),
 	}
 
 	dataRows := make(chan []string, *workerCount)
