@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/csv"
 	"encoding/json"
@@ -111,7 +112,9 @@ func readCSVFiles(filepaths []string, dataRows chan []string, wg *sync.WaitGroup
 
 		var record []string
 		for record, err = reader.Read(); err == nil; record, err = reader.Read() {
-			dataRows <- record
+			sliceCopy := make([]string, len(record))
+			copy(sliceCopy, record)
+			dataRows <- sliceCopy
 		}
 		if err != io.EOF {
 			log.Error(err)
@@ -134,9 +137,12 @@ func parseCertificateNamesOnly(bytes []byte) (*x509.Certificate, error) {
 		switch asn1Obj.Name {
 		case "Subject":
 			var subjectName *pkix.Name
-			subjectName, offset, err = asn1Obj.SubjectCommonName(bytes, offset)
+			var rawSubj []byte
+			subjectName, rawSubj, offset, err = asn1Obj.SubjectCommonName(bytes, offset)
 			if subjectName != nil {
 				cert.Subject = *subjectName
+				cert.RawSubject = make([]byte, len(rawSubj))
+				copy(cert.RawSubject, rawSubj)
 			}
 		case "Extensions":
 			var subjectAltNames []string
@@ -144,6 +150,8 @@ func parseCertificateNamesOnly(bytes []byte) (*x509.Certificate, error) {
 			if subjectAltNames != nil {
 				cert.DNSNames = append(cert.DNSNames, subjectAltNames...)
 			}
+		case "SubjectPublicKeyInfo":
+			cert.RawSubjectPublicKeyInfo, offset, err = asn1Obj.PublicKey(bytes, offset)
 		default:
 			offset, err = asn1Obj.AdvanceOffset(bytes, offset)
 		}
@@ -156,8 +164,12 @@ func parseCertificateNamesOnly(bytes []byte) (*x509.Certificate, error) {
 				return cert, err
 			}
 		}
-
 	}
+
+	hasher := sha256.New()
+	hasher.Write(cert.RawSubjectPublicKeyInfo)
+	hasher.Write(cert.RawSubject)
+	cert.SPKISubjectFingerprint = hasher.Sum(nil)
 
 	return cert, err
 }
@@ -390,12 +402,12 @@ func main() {
 		cs.NewSafeBrowsingLabeler(),
 	}
 
-	dataRows := make(chan []string, *workerCount)
+	dataRows := make(chan []string, 100)
 	readWG := &sync.WaitGroup{}
 	readWG.Add(1)
 	go readCSVFiles(filepaths, dataRows, readWG)
 
-	outputStrings := make(chan string)
+	outputStrings := make(chan string, 100)
 	workerWG := &sync.WaitGroup{}
 	for i := 0; i < *workerCount; i++ {
 		workerWG.Add(1)
