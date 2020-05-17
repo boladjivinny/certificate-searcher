@@ -224,8 +224,9 @@ func (obj *ASN1Obj) extractFieldAndAdvanceOffset(bytes []byte, initialOffset int
 	return
 }
 
-func (obj *ASN1Obj) SubjectCommonName(bytes []byte, initialOffset int) (*pkix.Name, int, error) {
-	if obj.Name != "Subject" {
+
+func (obj *ASN1Obj) PublicKey(bytes []byte, initialOffset int) ([]byte, int, error) {
+	if obj.Name != "SubjectPublicKeyInfo" {
 		panic("Cannot call SubjectCommonName() on " + obj.Name)
 	}
 
@@ -234,15 +235,28 @@ func (obj *ASN1Obj) SubjectCommonName(bytes []byte, initialOffset int) (*pkix.Na
 		return nil, nextOffset, err
 	}
 
+	return bytes[initialOffset:dataOffset+dataLen], nextOffset, nil
+}
+
+func (obj *ASN1Obj) SubjectCommonName(bytes []byte, initialOffset int) (*pkix.Name, []byte, int, error) {
+	if obj.Name != "Subject" {
+		panic("Cannot call SubjectCommonName() on " + obj.Name)
+	}
+
+	nextOffset, dataOffset, dataLen, err := obj.extractFieldAndAdvanceOffset(bytes, initialOffset)
+	if err != nil {
+		return nil, nil, nextOffset, err
+	}
+
 	var subject pkix.RDNSequence
 	if _, err := asn1.Unmarshal(bytes[initialOffset:dataOffset+dataLen], &subject); err != nil {
-		return nil, nextOffset, err
+		return nil, nil, nextOffset, err
 	}
 
 	name := &pkix.Name{}
 	name.FillFromRDNSequence(&subject)
 
-	return name, nextOffset, nil
+	return name, bytes[initialOffset:dataOffset+dataLen], nextOffset, nil
 }
 
 func (obj *ASN1Obj) SubjectAltName(bytes []byte, initialOffset int) ([]string, int, error) {
@@ -426,7 +440,7 @@ var CertObjs = []*ASN1Obj{
 		GetInnerTags: false,
 	},
 	{
-		Name:         "PublicKey",
+		Name:         "SubjectPublicKeyInfo",
 		Tag:          asn1.TagSequence,
 		GetInnerTags: false,
 	},
