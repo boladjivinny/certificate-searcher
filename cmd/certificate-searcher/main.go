@@ -26,13 +26,13 @@ var log *zap.SugaredLogger
 
 type LabeledCertChain struct {
 	AbuseDomains    map[string]cs.LabelsSources `json:"abuse_domains"`
-	Leaf            *x509.Certificate              `json:"leaf,omitempty"`
-	LeafParent      *x509.Certificate              `json:"leaf_parent,omitempty"`
-	Root            *x509.Certificate              `json:"root,omitempty"`
-	ChainDepth      int                            `json:"chain_depth,omitempty"`
-	ValidationLevel string                         `json:"validation_level,omitempty"`
-	LeafValidLength int                            `json:"leaf_valid_len,omitempty"`
-	MatchedDomains  string                         `json:"matched_domains,omitempty"`
+	Leaf            *x509.Certificate           `json:"leaf,omitempty"`
+	LeafParent      *x509.Certificate           `json:"leaf_parent,omitempty"`
+	Root            *x509.Certificate           `json:"root,omitempty"`
+	ChainDepth      int                         `json:"chain_depth,omitempty"`
+	ValidationLevel string                      `json:"validation_level,omitempty"`
+	LeafValidLength int                         `json:"leaf_valid_len,omitempty"`
+	MatchedDomains  string                      `json:"matched_domains,omitempty"`
 }
 
 func initLogger() {
@@ -213,10 +213,10 @@ func extractFeaturesToJSON(chain []*x509.Certificate, labels map[string]cs.Label
 
 	certChain := &LabeledCertChain{
 		AbuseDomains: labels,
-		Leaf:        leaf,
-		LeafParent:  leafParent,
-		Root:        chain[len(chain)-1],
-		ChainDepth:  len(chain),
+		Leaf:         leaf,
+		LeafParent:   leafParent,
+		Root:         chain[len(chain)-1],
+		ChainDepth:   len(chain),
 	}
 
 	return certChain, nil
@@ -237,7 +237,7 @@ func prettyParseCertificate(encodedCertChain []string, parser *x509.CertParser, 
 	return string(jsonBytes)
 }
 
-func processCertificates(dataRows chan []string, outputStrings chan string, labelers []cs.DomainLabeler, onlyParseNames bool, baseDomains map[string]struct{}, wg *sync.WaitGroup) {
+func processCertificates(dataRows chan []string, outputStrings chan string, certInfos chan cs.CertInfo, labelers []cs.DomainLabeler, onlyParseNames bool, baseDomains map[string]struct{}, wg *sync.WaitGroup) {
 	const CERT_INDEX int = 1
 	const CHAIN_INDEX int = 3
 	const CHAIN_DELIMETER string = "|"
@@ -280,6 +280,19 @@ func processCertificates(dataRows chan []string, outputStrings chan string, labe
 			}
 		}
 
+		if len(certChain) >= 2 {
+			parentCert := certChain[1]
+			certInfos <- cs.CertInfo{
+				TBSNoCTFingerprint: fmt.Sprintf("%x", leafCert.FingerprintNoCT),
+				ParentSPKISubject: fmt.Sprintf("%x", parentCert.SPKISubjectFingerprint),
+			}
+		} else {
+			certInfos <- cs.CertInfo{
+				TBSNoCTFingerprint: fmt.Sprintf("%x", leafCert.FingerprintNoCT),
+				ParentSPKISubject: fmt.Sprintf("No parent"),
+			}
+		}
+
 		if len(maldomainLabels) > 0 {
 			outputStrings <- prettyParseCertificate(chainB64, parser, maldomainLabels)
 		}
@@ -312,9 +325,40 @@ func writeOutput(outputStrings chan string, outputFilename string, wg *sync.Wait
 	wg.Done()
 }
 
+func collectStatistics(certInfos chan cs.CertInfo, statsFilename string, wg *sync.WaitGroup) {
+	var statsFile *os.File
+	var err error
+
+	if statsFilename == "-" {
+		statsFile = os.Stdout
+	} else if len(statsFilename) > 0 {
+		statsFile, err = os.Create(statsFilename)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	certStats := cs.CertStats{ParentSPKISubjectCerts: make(map[string]map[string]struct{})}
+
+	for certInfo := range certInfos {
+		if _, present := certStats.ParentSPKISubjectCerts[certInfo.ParentSPKISubject]; !present {
+			certStats.ParentSPKISubjectCerts[certInfo.ParentSPKISubject] = make(map[string]struct{})
+		}
+
+		certStats.ParentSPKISubjectCerts[certInfo.ParentSPKISubject][certInfo.TBSNoCTFingerprint] = struct{}{}
+	}
+
+	w := bufio.NewWriter(statsFile)
+	w.WriteString(certStats.String())
+	w.Flush()
+	statsFile.Close()
+	wg.Done()
+}
+
 // Command line flags
 var (
 	outputFilepath = flag.String("o", "-", "Output file for certificate")
+	statsFilepath  = flag.String("statsFile", "stats.txt", "Stats file for certificate searching")
 	workerCount    = flag.Int("workers", runtime.NumCPU(), "Number of parallel parsers/json unmarshallers")
 	memProfile     = flag.Bool("mem-profile", false, "Run memory profiling")
 	cpuProfile     = flag.Bool("cpu-profile", false, "Run cpu profiling")
@@ -407,12 +451,17 @@ func main() {
 	readWG.Add(1)
 	go readCSVFiles(filepaths, dataRows, readWG)
 
+	certInfos := make(chan cs.CertInfo, 100)
 	outputStrings := make(chan string, 100)
 	workerWG := &sync.WaitGroup{}
 	for i := 0; i < *workerCount; i++ {
 		workerWG.Add(1)
-		go processCertificates(dataRows, outputStrings, domainLabelers, *namesOnly, baseDomainMap, workerWG)
+		go processCertificates(dataRows, outputStrings, certInfos, domainLabelers, *namesOnly, baseDomainMap, workerWG)
 	}
+
+	statsWG := &sync.WaitGroup{}
+	statsWG.Add(1)
+	go collectStatistics(certInfos, *statsFilepath, statsWG)
 
 	writeWG := &sync.WaitGroup{}
 	writeWG.Add(1)
@@ -421,6 +470,8 @@ func main() {
 	readWG.Wait()
 	close(dataRows)
 	workerWG.Wait()
+	close(certInfos)
+	statsWG.Wait()
 	close(outputStrings)
 	writeWG.Wait()
 }
