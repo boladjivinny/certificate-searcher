@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"unicode"
 	"unicode/utf8"
 )
@@ -240,6 +241,7 @@ type TargetEmbeddingLabeler struct {
 	BaseDomains   *[]string
 	CombinedRegex *rubex.Regexp
 	RegexString   string
+	Mux sync.Mutex
 }
 
 func NewTargetEmbeddingLabeler(baseDomains *[]string) *TargetEmbeddingLabeler {
@@ -259,14 +261,20 @@ func NewTargetEmbeddingLabeler(baseDomains *[]string) *TargetEmbeddingLabeler {
 }
 
 func (t *TargetEmbeddingLabeler) LabelDomain(domain string) map[DomainLabel][]string {
+	t.Mux.Lock()
 	firstMatch := t.CombinedRegex.FindString(domain)
+	var ret map[DomainLabel][]string
+
 	if len(firstMatch) > 0 {
-		return map[DomainLabel][]string{
+		ret = map[DomainLabel][]string{
 			TARGET_EMBEDDING: {firstMatch},
 		}
+	} else {
+		ret = make(map[DomainLabel][]string)
 	}
+	t.Mux.Unlock()
 
-	return make(map[DomainLabel][]string)
+	return ret
 }
 
 type HomoGraphLabeler struct {

@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"crypto/sha256"
 	"encoding/base64"
 	"encoding/csv"
 	"encoding/json"
@@ -11,7 +10,6 @@ import (
 	"github.com/pkg/profile"
 	cs "github.com/teamnsrg/certificate-searcher"
 	"github.com/teamnsrg/zcrypto/x509"
-	"github.com/teamnsrg/zcrypto/x509/pkix"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"io"
@@ -125,55 +123,6 @@ func readCSVFiles(filepaths []string, dataRows chan []string, wg *sync.WaitGroup
 	wg.Done()
 }
 
-func parseCertificateNamesOnly(bytes []byte) (*x509.Certificate, error) {
-	cert := &x509.Certificate{}
-	cert.Raw = make([]byte, len(bytes))
-	copy(cert.Raw, bytes)
-	cert.DNSNames = make([]string, 0)
-	cert.Subject = pkix.Name{}
-	offset := 0
-	var err error
-	for _, asn1Obj := range cs.CertObjs {
-		switch asn1Obj.Name {
-		case "Subject":
-			var subjectName *pkix.Name
-			var rawSubj []byte
-			subjectName, rawSubj, offset, err = asn1Obj.SubjectCommonName(bytes, offset)
-			if subjectName != nil {
-				cert.Subject = *subjectName
-				cert.RawSubject = make([]byte, len(rawSubj))
-				copy(cert.RawSubject, rawSubj)
-			}
-		case "Extensions":
-			var subjectAltNames []string
-			subjectAltNames, offset, err = asn1Obj.SubjectAltName(bytes, offset)
-			if subjectAltNames != nil {
-				cert.DNSNames = append(cert.DNSNames, subjectAltNames...)
-			}
-		case "SubjectPublicKeyInfo":
-			cert.RawSubjectPublicKeyInfo, offset, err = asn1Obj.PublicKey(bytes, offset)
-		default:
-			offset, err = asn1Obj.AdvanceOffset(bytes, offset)
-		}
-
-		if err != nil {
-			switch err.(type) {
-			case cs.MissingExtensionError:
-				return cert, nil
-			default:
-				return cert, err
-			}
-		}
-	}
-
-	hasher := sha256.New()
-	hasher.Write(cert.RawSubjectPublicKeyInfo)
-	hasher.Write(cert.RawSubject)
-	cert.SPKISubjectFingerprint = hasher.Sum(nil)
-
-	return cert, err
-}
-
 func decodeAndParseChain(encodedCertChain []string, parser *x509.CertParser, onlyParseName bool) ([]*x509.Certificate, error) {
 	certChain := make([]*x509.Certificate, 0)
 	for _, encodedCert := range encodedCertChain {
@@ -184,7 +133,7 @@ func decodeAndParseChain(encodedCertChain []string, parser *x509.CertParser, onl
 
 		var cert *x509.Certificate
 		if onlyParseName {
-			cert, err = parseCertificateNamesOnly(certBytes)
+			cert, err = cs.ParseCertificateNamesOnly(certBytes)
 		} else {
 			cert, err = parser.ParseCertificate(certBytes)
 		}
@@ -237,12 +186,14 @@ func prettyParseCertificate(encodedCertChain []string, parser *x509.CertParser, 
 	return string(jsonBytes)
 }
 
-func processCertificates(dataRows chan []string, outputStrings chan string, certInfos chan cs.CertInfo, labelers []cs.DomainLabeler, onlyParseNames bool, baseDomains map[string]struct{}, wg *sync.WaitGroup) {
+func processCertificates(dataRows chan []string, outputStrings chan string, certInfos chan cs.CertInfo, labelers []cs.DomainLabeler, onlyParseNames bool, wg *sync.WaitGroup) {
 	const CERT_INDEX int = 1
 	const CHAIN_INDEX int = 3
 	const CHAIN_DELIMETER string = "|"
 
 	parser := x509.NewCertParser()
+	//labelers = append(labelers, cs.NewTargetEmbeddingLabeler(&baseDomains))
+
 
 	for row := range dataRows {
 		certB64 := row[CERT_INDEX]
@@ -261,10 +212,7 @@ func processCertificates(dataRows chan []string, outputStrings chan string, cert
 		leafCert := certChain[0]
 
 		maldomainLabels := make(map[string]cs.LabelsSources)
-		for _, name := range leafCert.DNSNames {
-			if _, present := baseDomains[name]; present {
-				continue
-			}
+		for _, name := range append([]string{leafCert.Subject.CommonName}, leafCert.DNSNames...) {
 
 			for _, labeler := range labelers {
 				labels := labeler.LabelDomain(name)
@@ -273,8 +221,8 @@ func processCertificates(dataRows chan []string, outputStrings chan string, cert
 						maldomainLabels[name] = make(cs.LabelsSources)
 					}
 
-					for label, baseDomains := range labels {
-						maldomainLabels[name][label] = baseDomains
+					for label, originDomains := range labels {
+						maldomainLabels[name][label] = originDomains
 					}
 				}
 			}
@@ -371,6 +319,8 @@ var (
 	}
 )
 
+var baseDomains []string
+
 func main() {
 	initLogger()
 
@@ -382,7 +332,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	var baseDomains []string
 	defaultDomains := []string{
 		"www.google.com",
 		"www.youtube.com",
@@ -413,10 +362,6 @@ func main() {
 				log.Warnf("domain %s was sanitized to %s", rawDomain, sanitizedDomain)
 			}
 		}
-	}
-	baseDomainMap := make(map[string]struct{})
-	for _, domain := range baseDomains {
-		baseDomainMap[domain] = struct{}{}
 	}
 
 	if *cpuProfile {
@@ -456,7 +401,7 @@ func main() {
 	workerWG := &sync.WaitGroup{}
 	for i := 0; i < *workerCount; i++ {
 		workerWG.Add(1)
-		go processCertificates(dataRows, outputStrings, certInfos, domainLabelers, *namesOnly, baseDomainMap, workerWG)
+		go processCertificates(dataRows, outputStrings, certInfos, domainLabelers, *namesOnly, workerWG)
 	}
 
 	statsWG := &sync.WaitGroup{}

@@ -1,15 +1,19 @@
 package certificate_searcher
 
 import (
+	"crypto/sha256"
 	"encoding/asn1"
 	"errors"
 	"fmt"
+	"github.com/teamnsrg/zcrypto/x509"
 	"github.com/teamnsrg/zcrypto/x509/pkix"
 	"math"
 )
 
 var (
-	oidExtensionSubjectAltName = []int{2, 5, 29, 17}
+	oidExtensionSubjectAltName                 = []int{2, 5, 29, 17}
+	oidExtensionCTPrecertificatePoison         = []int{1, 3, 6, 1, 4, 1, 11129, 2, 4, 3}
+	oidExtensionSignedCertificateTimestampList = []int{1, 3, 6, 1, 4, 1, 11129, 2, 4, 2}
 )
 
 type tagAndLength struct {
@@ -182,7 +186,8 @@ func (obj *ASN1Obj) AdvanceOffset(bytes []byte, initialOffset int) (int, error) 
 	}
 }
 
-type MissingExtensionError struct {}
+type MissingExtensionError struct{}
+
 func (e MissingExtensionError) Error() string {
 	return "Extension not found in cert"
 }
@@ -224,7 +229,6 @@ func (obj *ASN1Obj) extractFieldAndAdvanceOffset(bytes []byte, initialOffset int
 	return
 }
 
-
 func (obj *ASN1Obj) PublicKey(bytes []byte, initialOffset int) ([]byte, int, error) {
 	if obj.Name != "SubjectPublicKeyInfo" {
 		panic("Cannot call SubjectCommonName() on " + obj.Name)
@@ -235,7 +239,7 @@ func (obj *ASN1Obj) PublicKey(bytes []byte, initialOffset int) ([]byte, int, err
 		return nil, nextOffset, err
 	}
 
-	return bytes[initialOffset:dataOffset+dataLen], nextOffset, nil
+	return bytes[initialOffset : dataOffset+dataLen], nextOffset, nil
 }
 
 func (obj *ASN1Obj) SubjectCommonName(bytes []byte, initialOffset int) (*pkix.Name, []byte, int, error) {
@@ -256,7 +260,53 @@ func (obj *ASN1Obj) SubjectCommonName(bytes []byte, initialOffset int) (*pkix.Na
 	name := &pkix.Name{}
 	name.FillFromRDNSequence(&subject)
 
-	return name, bytes[initialOffset:dataOffset+dataLen], nextOffset, nil
+	return name, bytes[initialOffset : dataOffset+dataLen], nextOffset, nil
+}
+
+func (obj *ASN1Obj) ExtensionOffsets(bytes []byte, initialOffset int) ([]int, error) {
+	if obj.Name != "Extensions" {
+		panic("Cannot call SubjectAltName() on " + obj.Name)
+	}
+
+	nextOffset, dataOffset, dataLen, err := obj.extractFieldAndAdvanceOffset(bytes, initialOffset)
+	if err != nil {
+		return nil, err
+	}
+	if dataOffset == -1 && dataLen == -1 { //No extensions
+		return []int{}, nil
+	}
+
+	ext2Obj := &ASN1Obj{
+		Name:         "Extensions Part 2",
+		Tag:          asn1.TagSequence,
+		GetInnerTags: true,
+	}
+
+	// Get next extension
+	nextOffset, dataOffset, dataLen, err = ext2Obj.extractFieldAndAdvanceOffset(bytes, dataOffset)
+	if err != nil {
+		return nil, err
+	}
+
+	extOffsets := make([]int, 0)
+	for currentOffset := nextOffset; currentOffset < dataOffset+dataLen; {
+		extObj := &ASN1Obj{
+			Name:         "Extension",
+			Tag:          asn1.TagSequence,
+			GetInnerTags: false,
+		}
+		extOffsets = append(extOffsets, currentOffset)
+
+		// Get next extension
+		nextExtOffset, err := extObj.AdvanceOffset(bytes, currentOffset)
+		if err != nil {
+			return nil, err
+		}
+
+		currentOffset = nextExtOffset
+	}
+
+	return extOffsets, nil
 }
 
 func (obj *ASN1Obj) SubjectAltName(bytes []byte, initialOffset int) ([]string, int, error) {
@@ -398,6 +448,185 @@ func parseSANExtension(value []byte) (dnsNames []string, err error) {
 	return
 }
 
+type tbsNoCT struct {
+	tbsStartIndex int
+	tbsTagAndLen  tagAndLength
+	tbsDataIndex  int
+	tbsEndIndex   int
+
+	extensionWrapperStartIndex int
+	extensionWrapperTagAndLen  tagAndLength
+	extensionWrapperDataIndex  int
+	extensionWrapperEndIndex   int
+
+	extensionStartIndex int
+	extensionTagAndLen  tagAndLength
+	extensionDataIndex  int
+	extensionEndIndex   int
+
+	ctStartIndex int
+	ctEndIndex   int
+}
+
+func ParseCertificateNamesOnly(bytes []byte) (*x509.Certificate, error) {
+	cert := &x509.Certificate{}
+	cert.Raw = make([]byte, len(bytes))
+	copy(cert.Raw, bytes)
+	cert.DNSNames = make([]string, 0)
+	cert.Subject = pkix.Name{}
+	offset := 0
+	var err error
+
+	tbsCertNoCT := tbsNoCT{}
+
+	for _, asn1Obj := range CertObjs {
+		switch asn1Obj.Name {
+		case "TBSCertificate":
+			var tagAndLen tagAndLength
+			tbsCertNoCT.tbsStartIndex = offset
+			tagAndLen, offset, err = parseTagAndLength(bytes, offset)
+			tbsCertNoCT.tbsTagAndLen = tagAndLen
+			tbsCertNoCT.tbsDataIndex = offset
+			tbsCertNoCT.tbsEndIndex = offset + tagAndLen.length
+		case "Subject":
+			var subjectName *pkix.Name
+			var rawSubj []byte
+			subjectName, rawSubj, offset, err = asn1Obj.SubjectCommonName(bytes, offset)
+			if subjectName != nil {
+				cert.Subject = *subjectName
+				cert.RawSubject = make([]byte, len(rawSubj))
+				copy(cert.RawSubject, rawSubj)
+			}
+		case "SubjectPublicKeyInfo":
+			cert.RawSubjectPublicKeyInfo, offset, err = asn1Obj.PublicKey(bytes, offset)
+		case "Extensions":
+			var subjectAltNames []string
+
+			tbsCertNoCT.extensionWrapperStartIndex = offset
+			nextOffset, dataOffset, dataLen, err := asn1Obj.extractFieldAndAdvanceOffset(bytes, offset)
+			if err != nil {
+				break
+			}
+
+			tbsCertNoCT.extensionWrapperTagAndLen, _, err = parseTagAndLength(bytes, tbsCertNoCT.extensionWrapperStartIndex)
+			if err != nil {
+				break
+			}
+
+			tbsCertNoCT.extensionWrapperDataIndex = dataOffset
+			tbsCertNoCT.extensionWrapperEndIndex = dataOffset + dataLen
+
+			ext2Obj := &ASN1Obj{
+				Name:         "Extensions Part 2",
+				Tag:          asn1.TagSequence,
+				GetInnerTags: true,
+			}
+
+			// Get next extension
+			tbsCertNoCT.extensionStartIndex = dataOffset
+			nextOffset, dataOffset, dataLen, err = ext2Obj.extractFieldAndAdvanceOffset(bytes, dataOffset)
+			if err != nil {
+				break
+			}
+
+			tbsCertNoCT.extensionTagAndLen, _, err = parseTagAndLength(bytes, tbsCertNoCT.extensionStartIndex)
+			if err != nil {
+				break
+			}
+			tbsCertNoCT.extensionDataIndex = dataOffset
+			tbsCertNoCT.extensionEndIndex = dataOffset + dataLen
+
+			if err != nil {
+				break
+			}
+
+			for currentOffset := nextOffset; currentOffset < dataOffset+dataLen; {
+				extObj := &ASN1Obj{
+					Name:         "Extension",
+					Tag:          asn1.TagSequence,
+					GetInnerTags: false,
+				}
+
+				tagAndLen, dataOffset, parseErr := parseTagAndLength(bytes, currentOffset)
+				if parseErr != nil {
+					return nil, parseErr
+				}
+				ext := pkix.Extension{}
+
+				if rest, marshalErr := asn1.Unmarshal(bytes[currentOffset:dataOffset+tagAndLen.length], &ext); marshalErr != nil {
+					return nil, marshalErr
+				} else if len(rest) != 0 {
+					return nil, errors.New("x509: trailing data after ASN.1 extension")
+				}
+
+				if ext.Id.Equal(oidExtensionSubjectAltName) {
+					dnsNames, parseSANErr := parseSANExtension(ext.Value)
+					if parseSANErr != nil {
+						return nil, parseSANErr
+					}
+
+					subjectAltNames = dnsNames
+				} else if ext.Id.Equal(oidExtensionCTPrecertificatePoison) || ext.Id.Equal(oidExtensionSignedCertificateTimestampList) {
+					tbsCertNoCT.ctStartIndex = currentOffset
+					tbsCertNoCT.ctEndIndex = dataOffset + tagAndLen.length
+				}
+
+				// Get next extension
+				nextExtOffset, err := extObj.AdvanceOffset(bytes, currentOffset)
+				if err != nil {
+					return nil, err
+				}
+
+				currentOffset = nextExtOffset
+			}
+
+			if subjectAltNames != nil {
+				cert.DNSNames = append(cert.DNSNames, subjectAltNames...)
+			}
+		default:
+			offset, err = asn1Obj.AdvanceOffset(bytes, offset)
+		}
+	}
+
+	spkiHasher := sha256.New()
+	spkiHasher.Write(cert.RawSubjectPublicKeyInfo)
+	spkiHasher.Write(cert.RawSubject)
+	cert.SPKISubjectFingerprint = spkiHasher.Sum(nil)
+
+	noCTHasher := sha256.New()
+	if tbsCertNoCT.ctStartIndex == tbsCertNoCT.ctEndIndex {
+		noCTHasher.Write(bytes[tbsCertNoCT.tbsStartIndex:tbsCertNoCT.tbsEndIndex])
+	} else {
+		removalLength := tbsCertNoCT.ctEndIndex - tbsCertNoCT.ctStartIndex
+		// modify TBS cert length, Ext Seq length, Inner ext seq length
+		tbsCertNoCT.tbsTagAndLen.length = tbsCertNoCT.tbsTagAndLen.length - removalLength
+		noCTHasher.Write(marshalTagAndLength(tbsCertNoCT.tbsTagAndLen))
+		noCTHasher.Write(bytes[tbsCertNoCT.tbsDataIndex:tbsCertNoCT.extensionWrapperStartIndex])
+
+		if tbsCertNoCT.extensionWrapperStartIndex != tbsCertNoCT.extensionWrapperEndIndex {
+			tbsCertNoCT.extensionWrapperTagAndLen.length = tbsCertNoCT.extensionWrapperTagAndLen.length - removalLength
+			noCTHasher.Write(marshalTagAndLength(tbsCertNoCT.extensionWrapperTagAndLen))
+			noCTHasher.Write(bytes[tbsCertNoCT.extensionWrapperDataIndex:tbsCertNoCT.extensionStartIndex])
+		}
+
+		tbsCertNoCT.extensionTagAndLen.length = tbsCertNoCT.extensionTagAndLen.length - removalLength
+		noCTHasher.Write(marshalTagAndLength(tbsCertNoCT.extensionTagAndLen))
+		noCTHasher.Write(bytes[tbsCertNoCT.extensionDataIndex:tbsCertNoCT.ctStartIndex])
+		noCTHasher.Write(bytes[tbsCertNoCT.ctEndIndex:tbsCertNoCT.tbsEndIndex])
+	}
+	cert.FingerprintNoCT = noCTHasher.Sum(nil)
+
+	if err != nil {
+		switch err.(type) {
+		case MissingExtensionError:
+			return cert, nil
+		default:
+			return cert, err
+		}
+	}
+
+	return cert, err
+}
 
 var CertObjs = []*ASN1Obj{
 	{
