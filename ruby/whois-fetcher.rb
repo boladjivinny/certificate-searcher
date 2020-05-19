@@ -58,7 +58,7 @@ else
   exit(1)
 end
 
-sort whois_hosts to prioritize shorter domains (less likely to be a long chained dumb domain)
+# sort whois_hosts to prioritize shorter domains (less likely to be a long chained dumb domain)
 whois_hosts_domains.each do |whois_host, domains|
   whois_hosts_domains[whois_host] = domains.sort_by(&:length)
 end
