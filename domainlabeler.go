@@ -109,7 +109,7 @@ type TypoSquattingLabeler struct {
 	CharPermutationDomains  MutatedDomains
 	CharSubstitutionDomains MutatedDomains
 	CharDuplicationDomains  MutatedDomains
-	AllMutatedDomains MutatedDomains
+	AllMutatedDomains       MutatedDomains
 }
 
 func NewTypoSquattingLabeler(baseDomains *[]string) *TypoSquattingLabeler {
@@ -120,7 +120,7 @@ func NewTypoSquattingLabeler(baseDomains *[]string) *TypoSquattingLabeler {
 		CharPermutationDomains:  make(MutatedDomains),
 		CharSubstitutionDomains: make(MutatedDomains),
 		CharDuplicationDomains:  make(MutatedDomains),
-		AllMutatedDomains: make(MutatedDomains),
+		AllMutatedDomains:       make(MutatedDomains),
 	}
 
 	for _, domain := range *baseDomains {
@@ -233,7 +233,7 @@ func (t *TypoSquattingLabeler) LabelDomain(domain string) map[DomainLabel][]stri
 	return domainLabels
 }
 
-func (t * TypoSquattingLabeler) GetMutations() MutatedDomains {
+func (t *TypoSquattingLabeler) GetMutations() MutatedDomains {
 	return t.AllMutatedDomains
 }
 
@@ -241,7 +241,7 @@ type TargetEmbeddingLabeler struct {
 	BaseDomains   *[]string
 	CombinedRegex *rubex.Regexp
 	RegexString   string
-	Mux sync.Mutex
+	Mux           sync.Mutex
 }
 
 func NewTargetEmbeddingLabeler(baseDomains *[]string) *TargetEmbeddingLabeler {
@@ -263,22 +263,19 @@ func NewTargetEmbeddingLabeler(baseDomains *[]string) *TargetEmbeddingLabeler {
 func (t *TargetEmbeddingLabeler) LabelDomain(domain string) map[DomainLabel][]string {
 	t.Mux.Lock()
 	firstMatch := t.CombinedRegex.FindString(domain)
-	var ret map[DomainLabel][]string
-
-	if len(firstMatch) > 0 {
-		ret = map[DomainLabel][]string{
-			TARGET_EMBEDDING: {firstMatch},
-		}
-	} else {
-		ret = make(map[DomainLabel][]string)
-	}
 	t.Mux.Unlock()
 
-	return ret
+	if len(firstMatch) > 0 {
+		return map[DomainLabel][]string{
+			TARGET_EMBEDDING: {firstMatch},
+		}
+	}
+
+	return make(map[DomainLabel][]string)
 }
 
 type HomoGraphLabeler struct {
-	BaseDomainMap map[string]struct{}
+	BaseDomainMap    map[string]struct{}
 	HomographDomains MutatedDomains
 }
 
@@ -380,7 +377,6 @@ func (b *BitSquattingLabeler) GetMutations() MutatedDomains {
 	return b.BitSquattedDomains
 }
 
-
 type WrongTLDLabeler struct {
 	BaseDomains     *[]string
 	OneOrTwoTLDs    map[string]struct{}
@@ -455,7 +451,6 @@ func (w *WrongTLDLabeler) LabelDomain(domain string) map[DomainLabel][]string {
 func (w *WrongTLDLabeler) GetMutations() MutatedDomains {
 	return w.WrongTLDDomains
 }
-
 
 type ComboSquattingLabeler struct {
 }
