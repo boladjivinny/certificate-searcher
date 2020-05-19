@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/base64"
 	"encoding/csv"
+	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -224,16 +225,20 @@ func processCertificates(dataRows chan []string, outputStrings chan string, cert
 			}
 		}
 
+		tbsNoCTBytes := make([]byte, 16)
+		copy(tbsNoCTBytes, hex.EncodeToString(leafCert.FingerprintNoCT)[:16])
+
 		if len(certChain) >= 2 {
 			parentCert := certChain[1]
+
 			certInfos <- cs.CertInfo{
-				TBSNoCTFingerprint: fmt.Sprintf("%x", leafCert.FingerprintNoCT),
-				ParentSPKISubject:  fmt.Sprintf("%x", parentCert.SPKISubjectFingerprint),
+				TBSNoCTFingerprint: string(tbsNoCTBytes),
+				ParentSPKISubject:  hex.EncodeToString(parentCert.SPKISubjectFingerprint)[:16],
 			}
 		} else {
 			certInfos <- cs.CertInfo{
-				TBSNoCTFingerprint: fmt.Sprintf("%x", leafCert.FingerprintNoCT),
-				ParentSPKISubject:  fmt.Sprintf("No parent"),
+				TBSNoCTFingerprint: string(tbsNoCTBytes),
+				ParentSPKISubject:  "No parent",
 			}
 		}
 
@@ -288,6 +293,8 @@ func collectStatistics(certInfos chan cs.CertInfo, statsFilename string, wg *syn
 		if _, present := certStats.ParentSPKISubjectCerts[certInfo.ParentSPKISubject]; !present {
 			certStats.ParentSPKISubjectCerts[certInfo.ParentSPKISubject] = make(map[string]struct{})
 		}
+
+		//shortTBSNoCTFingerprint := certInfo.TBSNoCTFingerprint[:20]
 
 		certStats.ParentSPKISubjectCerts[certInfo.ParentSPKISubject][certInfo.TBSNoCTFingerprint] = struct{}{}
 	}
