@@ -192,7 +192,7 @@ func processCertificates(dataRows chan []string, outputStrings chan string, cert
 	const CHAIN_DELIMETER string = "|"
 
 	parser := x509.NewCertParser()
-	//labelers = append(labelers, cs.NewTargetEmbeddingLabeler(&baseDomains))
+	labelers = append(labelers, cs.NewTargetEmbeddingLabeler(&baseDomains))
 
 
 	for row := range dataRows {
@@ -383,7 +383,7 @@ func main() {
 
 	domainLabelers := []cs.DomainLabeler{
 		cs.NewTypoSquattingLabeler(&baseDomains),
-		cs.NewTargetEmbeddingLabeler(&baseDomains),
+		//cs.NewTargetEmbeddingLabeler(&baseDomains), added in each goroutine
 		cs.NewHomoGraphLabeler(&baseDomains),
 		cs.NewBitSquattingLabeler(&baseDomains),
 		cs.NewWrongTLDLabeler(&baseDomains),
