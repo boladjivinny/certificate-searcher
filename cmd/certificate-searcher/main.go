@@ -155,11 +155,6 @@ func extractFeaturesToJSON(chain []*x509.Certificate, labels map[string]cs.Label
 		leafParent = chain[1]
 	}
 
-	//stringLabels := make(map[string]map[string][]string)
-	//for dl, slice := range labels {
-	//	stringLabels[dl.String()] = slice
-	//}
-
 	certChain := &LabeledCertChain{
 		AbuseDomains: labels,
 		Leaf:         leaf,
@@ -194,12 +189,13 @@ func processCertificates(dataRows chan []string, outputStrings chan string, cert
 	parser := x509.NewCertParser()
 	labelers = append(labelers, cs.NewTargetEmbeddingLabeler(&baseDomains))
 
-
 	for row := range dataRows {
 		certB64 := row[CERT_INDEX]
 		chainB64 := strings.Split(strings.TrimSpace(row[CHAIN_INDEX]), CHAIN_DELIMETER)
 
-		if chainB64[0] != certB64 {
+		if row[CHAIN_INDEX] == "" {
+			chainB64 = []string{certB64}
+		} else if chainB64[0] != certB64 {
 			chainB64 = append([]string{certB64}, chainB64...)
 		}
 
@@ -232,12 +228,12 @@ func processCertificates(dataRows chan []string, outputStrings chan string, cert
 			parentCert := certChain[1]
 			certInfos <- cs.CertInfo{
 				TBSNoCTFingerprint: fmt.Sprintf("%x", leafCert.FingerprintNoCT),
-				ParentSPKISubject: fmt.Sprintf("%x", parentCert.SPKISubjectFingerprint),
+				ParentSPKISubject:  fmt.Sprintf("%x", parentCert.SPKISubjectFingerprint),
 			}
 		} else {
 			certInfos <- cs.CertInfo{
 				TBSNoCTFingerprint: fmt.Sprintf("%x", leafCert.FingerprintNoCT),
-				ParentSPKISubject: fmt.Sprintf("No parent"),
+				ParentSPKISubject:  fmt.Sprintf("No parent"),
 			}
 		}
 
@@ -333,12 +329,12 @@ func main() {
 	}
 
 	defaultDomains := []string{
-		"www.google.com",
-		"www.youtube.com",
-		"www.tmall.com",
-		"www.facebook.com",
-		"www.baidu.com",
-		"www.apple.com",
+		"google.com",
+		"youtube.com",
+		"tmall.com",
+		"facebook.com",
+		"baidu.com",
+		"apple.com",
 	}
 
 	if *domainFilepath == "" {
