@@ -25,6 +25,7 @@ case File.extname(params[:input])
 when ".txt"
   File.readlines(params[:input]).each do |line|
     domain = line.rstrip.split(",")[0]
+    domain = domain[2..-1] if domain.start_with?("*.")
     host = Whois::Server.find_for_domain(domain)&.host
 
     if host.nil?
@@ -38,6 +39,7 @@ when ".json"
   File.readlines(params[:input]).each do |line|
     obj = Oj.load(line.rstrip)
     obj['abuse_domains'].each do |maldomain, maltype|
+      maldomain = maldomain[2..-1] if maldomain.start_with?("*.")
       host = Whois::Server.find_for_domain(maldomain)&.host
 
       if host.nil?
