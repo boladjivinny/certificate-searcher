@@ -181,7 +181,7 @@ func prettyParseCertificate(encodedCertChain []string, parser *x509.CertParser, 
 	return string(jsonBytes)
 }
 
-func processCertificates(dataRows chan []string, outputStrings chan string, certInfos chan *cs.CertInfo, labelers []cs.DomainLabeler, onlyParseNames bool, wg *sync.WaitGroup) {
+func processCertificates(dataRows chan []string, outputStrings chan string, certInfos chan *cs.CertInfo, labelers []cs.DomainLabeler, onlyParseNames bool, statsOnly bool, wg *sync.WaitGroup) {
 	const CERT_INDEX int = 1
 	const CHAIN_INDEX int = 3
 	const CHAIN_DELIMETER string = "|"
@@ -207,20 +207,25 @@ func processCertificates(dataRows chan []string, outputStrings chan string, cert
 
 		leafCert := certChain[0]
 
-		maldomainLabels := make(map[string]cs.LabelsSources)
-		for _, name := range append([]string{leafCert.Subject.CommonName}, leafCert.DNSNames...) {
+		if !statsOnly {
+			maldomainLabels := make(map[string]cs.LabelsSources)
+			for _, name := range append([]string{leafCert.Subject.CommonName}, leafCert.DNSNames...) {
 
-			for _, labeler := range labelers {
-				labels := labeler.LabelDomain(name)
-				if len(labels) > 0 {
-					if _, present := maldomainLabels[name]; !present {
-						maldomainLabels[name] = make(cs.LabelsSources)
-					}
+				for _, labeler := range labelers {
+					labels := labeler.LabelDomain(name)
+					if len(labels) > 0 {
+						if _, present := maldomainLabels[name]; !present {
+							maldomainLabels[name] = make(cs.LabelsSources)
+						}
 
-					for label, originDomains := range labels {
-						maldomainLabels[name][label] = originDomains
+						for label, originDomains := range labels {
+							maldomainLabels[name][label] = originDomains
+						}
 					}
 				}
+			}
+			if len(maldomainLabels) > 0 {
+				outputStrings <- prettyParseCertificate(chainB64, parser, maldomainLabels)
 			}
 		}
 
@@ -232,9 +237,6 @@ func processCertificates(dataRows chan []string, outputStrings chan string, cert
 			certInfos <- cs.NewCertInfo(leafCert.FingerprintNoCT, []byte("No parent"))
 		}
 
-		if len(maldomainLabels) > 0 {
-			outputStrings <- prettyParseCertificate(chainB64, parser, maldomainLabels)
-		}
 	}
 
 	wg.Done()
@@ -294,6 +296,7 @@ func collectStatistics(certInfos chan *cs.CertInfo, statsFilename string, wg *sy
 var (
 	outputFilepath = flag.String("o", "-", "Output file for certificate")
 	statsFilepath  = flag.String("statsFile", "stats.txt", "Stats file for certificate searching")
+	statsOnly      = flag.Bool("stats-only", false, "Only calculate stats")
 	workerCount    = flag.Int("workers", runtime.NumCPU(), "Number of parallel parsers/json unmarshallers")
 	memProfile     = flag.Bool("mem-profile", false, "Run memory profiling")
 	cpuProfile     = flag.Bool("cpu-profile", false, "Run cpu profiling")
@@ -388,7 +391,7 @@ func main() {
 	workerWG := &sync.WaitGroup{}
 	for i := 0; i < *workerCount; i++ {
 		workerWG.Add(1)
-		go processCertificates(dataRows, outputStrings, certInfos, domainLabelers, *namesOnly, workerWG)
+		go processCertificates(dataRows, outputStrings, certInfos, domainLabelers, *namesOnly, *statsOnly, workerWG)
 	}
 
 	statsWG := &sync.WaitGroup{}
