@@ -68,3 +68,16 @@ type CertInfo struct {
 	TBSNoCTFingerprint []byte
 	ParentSPKISubject  []byte
 }
+
+func NewCertInfo(noCTFingerprint, parentSPKISubjFingerprint[]byte) *CertInfo {
+	certFP := make([]byte, len(noCTFingerprint))
+	parentFP := make([]byte, len(parentSPKISubjFingerprint))
+
+	copy(certFP, noCTFingerprint)
+	copy(parentFP, parentSPKISubjFingerprint)
+
+	return &CertInfo{
+		TBSNoCTFingerprint: certFP,
+		ParentSPKISubject: parentFP,
+	}
+}

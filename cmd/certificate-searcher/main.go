@@ -181,7 +181,7 @@ func prettyParseCertificate(encodedCertChain []string, parser *x509.CertParser, 
 	return string(jsonBytes)
 }
 
-func processCertificates(dataRows chan []string, outputStrings chan string, certInfos chan cs.CertInfo, labelers []cs.DomainLabeler, onlyParseNames bool, wg *sync.WaitGroup) {
+func processCertificates(dataRows chan []string, outputStrings chan string, certInfos chan *cs.CertInfo, labelers []cs.DomainLabeler, onlyParseNames bool, wg *sync.WaitGroup) {
 	const CERT_INDEX int = 1
 	const CHAIN_INDEX int = 3
 	const CHAIN_DELIMETER string = "|"
@@ -227,15 +227,9 @@ func processCertificates(dataRows chan []string, outputStrings chan string, cert
 		if len(certChain) >= 2 {
 			parentCert := certChain[1]
 
-			certInfos <- cs.CertInfo{
-				TBSNoCTFingerprint: leafCert.FingerprintNoCT,
-				ParentSPKISubject:  parentCert.SPKISubjectFingerprint,
-			}
+			certInfos <- cs.NewCertInfo(leafCert.FingerprintNoCT, parentCert.SPKISubjectFingerprint)
 		} else {
-			certInfos <- cs.CertInfo{
-				TBSNoCTFingerprint: leafCert.FingerprintNoCT,
-				ParentSPKISubject:  []byte("No parent"),
-			}
+			certInfos <- cs.NewCertInfo(leafCert.FingerprintNoCT, []byte("No parent"))
 		}
 
 		if len(maldomainLabels) > 0 {
@@ -270,7 +264,7 @@ func writeOutput(outputStrings chan string, outputFilename string, wg *sync.Wait
 	wg.Done()
 }
 
-func collectStatistics(certInfos chan cs.CertInfo, statsFilename string, wg *sync.WaitGroup) {
+func collectStatistics(certInfos chan *cs.CertInfo, statsFilename string, wg *sync.WaitGroup) {
 	var statsFile *os.File
 	var err error
 
@@ -389,7 +383,7 @@ func main() {
 	readWG.Add(1)
 	go readCSVFiles(filepaths, dataRows, readWG)
 
-	certInfos := make(chan cs.CertInfo, 100)
+	certInfos := make(chan *cs.CertInfo, 100)
 	outputStrings := make(chan string, 100)
 	workerWG := &sync.WaitGroup{}
 	for i := 0; i < *workerCount; i++ {
