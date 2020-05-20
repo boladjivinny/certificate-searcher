@@ -73,6 +73,6 @@ Parallel.map(whois_hosts, in_threads: whois_hosts.length) do |whois_host|
     record = Whois.whois(domain)
     serialized = YAML::dump(record)
     File.write(output_filename, serialized)
-    sleep(10)
+    sleep(30)
   end
 end
