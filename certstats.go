@@ -10,7 +10,7 @@ import (
 )
 
 type CertStats struct {
-	NoCTFingerprints  *bloomfilter.Filter
+	NoCTFingerprints        *bloomfilter.Filter
 	ParentSPKISubjectCounts map[string]uint64
 }
 
@@ -24,7 +24,7 @@ func NewCertStats() *CertStats {
 	}
 
 	return &CertStats{
-		NoCTFingerprints: bf,
+		NoCTFingerprints:        bf,
 		ParentSPKISubjectCounts: make(map[string]uint64),
 	}
 }
