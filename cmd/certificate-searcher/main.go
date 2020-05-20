@@ -224,13 +224,12 @@ func processCertificates(dataRows chan []string, outputStrings chan string, cert
 			}
 		}
 
-		if len(certChain) >= 2 {
-			parentCert := certChain[1]
-
-			certInfos <- cs.NewCertInfo(leafCert.FingerprintNoCT, parentCert.SPKISubjectFingerprint)
-		} else {
-			certInfos <- cs.NewCertInfo(leafCert.FingerprintNoCT, []byte("No parent"))
-		}
+		//if len(certChain) >= 2 {
+		//	parentCert := certChain[1]
+		//	certInfos <- cs.NewCertInfo(leafCert.FingerprintNoCT, parentCert.SPKISubjectFingerprint)
+		//} else {
+		//	certInfos <- cs.NewCertInfo(leafCert.FingerprintNoCT, []byte("No parent"))
+		//}
 
 		if len(maldomainLabels) > 0 {
 			outputStrings <- prettyParseCertificate(chainB64, parser, maldomainLabels)
@@ -383,17 +382,17 @@ func main() {
 	readWG.Add(1)
 	go readCSVFiles(filepaths, dataRows, readWG)
 
-	certInfos := make(chan *cs.CertInfo, 100)
+	//certInfos := make(chan *cs.CertInfo, 100)
 	outputStrings := make(chan string, 100)
 	workerWG := &sync.WaitGroup{}
 	for i := 0; i < *workerCount; i++ {
 		workerWG.Add(1)
-		go processCertificates(dataRows, outputStrings, certInfos, domainLabelers, *namesOnly, workerWG)
+		go processCertificates(dataRows, outputStrings, nil, domainLabelers, *namesOnly, workerWG)
 	}
 
-	statsWG := &sync.WaitGroup{}
-	statsWG.Add(1)
-	go collectStatistics(certInfos, *statsFilepath, statsWG)
+	//statsWG := &sync.WaitGroup{}
+	//statsWG.Add(1)
+	//go collectStatistics(certInfos, *statsFilepath, statsWG)
 
 	writeWG := &sync.WaitGroup{}
 	writeWG.Add(1)
@@ -402,8 +401,8 @@ func main() {
 	readWG.Wait()
 	close(dataRows)
 	workerWG.Wait()
-	close(certInfos)
-	statsWG.Wait()
+	//close(certInfos)
+	//statsWG.Wait()
 	close(outputStrings)
 	writeWG.Wait()
 }
