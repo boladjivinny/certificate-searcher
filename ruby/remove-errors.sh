@@ -1,5 +1,6 @@
 #/bin/bash
 
+for f in $(rg -i "WHOIS LIMIT EXCEEDED" -l); do rm $f; done
 for f in $(rg -i "request limit exceeded"  -l); do rm $f; done
 for f in $(rg -i "Query limit exceeded"  -l); do rm $f; done
 for f in $(rg -i "Look up quota exceeded"  -l); do rm $f; done
