@@ -170,12 +170,14 @@ func prettyParseCertificate(encodedCertChain []string, parser *x509.CertParser, 
 	certChain, err := decodeAndParseChain(encodedCertChain, parser, false)
 	processedChain, err := extractFeaturesToJSON(certChain, labels)
 	if err != nil {
-		log.Fatal(err)
+		log.Error(err)
+		return ""
 	}
 
 	jsonBytes, err := json.Marshal(processedChain)
 	if err != nil {
-		log.Fatal(err)
+		log.Error(err)
+		return ""
 	}
 
 	return string(jsonBytes)
