@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/csv"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"github.com/pkg/profile"
@@ -150,6 +151,10 @@ func decodeAndParseChain(encodedCertChain []string, parser *x509.CertParser, onl
 
 func extractFeaturesToJSON(chain []*x509.Certificate, labels map[string]cs.LabelsSources) (*LabeledCertChain, error) {
 	var leaf, leafParent *x509.Certificate
+	if len(chain) == 0 {
+		return nil, errors.New("Empty chain")
+	}
+
 	leaf = chain[0]
 	if len(chain) > 1 {
 		leafParent = chain[1]
