@@ -45,9 +45,9 @@ class DomainHistory:
 protocol_etldPlusOnes = {}
 protocol_domains = {}
 
-for fpath in sorted(glob.glob(os.path.join(blacklist_dir, "*.csv"))):
+for fpath in sorted(glob.glob(os.path.join(blacklist_dir, "*.csv")))[0::7]:
     logger.info(f"reading {fpath}")
-    date = "-".join(fpath.split('/')[-1].split('-')[:2])
+    date = "-".join(fpath.split('/')[-1].split('-')[:3])
 
     protocol_etldPlusOnes[date] = {"http": set(), "https": set()}
     protocol_domains[date] = {"http": set(), "https": set()}
