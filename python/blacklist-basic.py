@@ -7,6 +7,7 @@ from loguru import logger
 
 blacklist_dir = sys.argv[1]
 output_file = sys.argv[2]
+category = sys.argv[3] if len(sys.argv) > 2 else ""
 
 class DomainHistory:
     def __init__(self, domain):
@@ -62,6 +63,11 @@ for fpath in sorted(glob.glob(os.path.join(blacklist_dir, "*.csv")))[0::7]:
                 continue
             domain = row['Host']
             eTLD_plus_one = row['ETLDPlus1']
+            mal_category = row['Category']
+
+            if category != "":
+                if mal_category != category:
+                    continue
 
             protocol_etldPlusOnes[date][protocol].add(eTLD_plus_one)
             protocol_domains[date][protocol].add(domain)
