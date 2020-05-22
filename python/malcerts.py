@@ -26,5 +26,5 @@ with open(malcert_file) as f:
             abuse_types.update(d.keys())
 
         for abuse_type in abuse_types:
-            print(f"{abuse_type},{data['leaf_parent']['spki_subject_fingerprint']},{data['leaf']['issuer_dn']},{data['leaf']['validity']['start']}")
+            print(f"{abuse_type}|{data['leaf_parent']['spki_subject_fingerprint']}|{data['leaf']['issuer_dn']}|{data['leaf']['validity']['start']}")
 
