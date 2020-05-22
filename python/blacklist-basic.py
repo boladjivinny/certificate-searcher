@@ -3,11 +3,13 @@ import glob
 import os
 import sys
 
+import tldextract
 from loguru import logger
 
 blacklist_dir = sys.argv[1]
-output_file = sys.argv[2]
-category = sys.argv[3] if len(sys.argv) > 2 else ""
+safebrowsing_dir = sys.argv[2]
+output_file = sys.argv[3]
+
 
 class DomainHistory:
     def __init__(self, domain):
@@ -50,6 +52,12 @@ for fpath in sorted(glob.glob(os.path.join(blacklist_dir, "*.csv")))[0::7]:
     logger.info(f"reading {fpath}")
     date = "-".join(fpath.split('/')[-1].split('-')[:3])
 
+    gsb_paths = glob.glob(os.path.join(safebrowsing_dir, date + "/", f"{date}T00*-results.txt"))
+    if len(gsb_paths) == 0:
+        continue
+
+    gsb_path = gsb_paths[0]
+
     protocol_etldPlusOnes[date] = {"http": set(), "https": set()}
     protocol_domains[date] = {"http": set(), "https": set()}
 
@@ -65,12 +73,34 @@ for fpath in sorted(glob.glob(os.path.join(blacklist_dir, "*.csv")))[0::7]:
             eTLD_plus_one = row['ETLDPlus1']
             mal_category = row['Category']
 
-            if category != "":
-                if mal_category != category:
-                    continue
+            if mal_category != 'Phishing':
+                continue
 
             protocol_etldPlusOnes[date][protocol].add(eTLD_plus_one)
             protocol_domains[date][protocol].add(domain)
+
+    logger.info(f"reading {gsb_path}")
+    with open(gsb_path) as gsb:
+        csv_reader = csv.reader(gsb)
+        for row in csv_reader:
+            entry = row[0]
+            category = row[2]
+
+            if category != 'SOCIAL_ENGINEERING':
+                continue
+
+            if not entry.startswith('http://') and not entry.startswith('https://'):
+                continue
+
+            ext = tldextract.extract(entry)
+            domain = '.'.join(ext).strip('.')
+            eTLD_plus_one = '.'.join(ext[1:]).strip('.')
+            print(domain)
+
+            protocol = entry.split(':')[0]
+
+            protocol_domains[date][protocol].add(domain)
+            protocol_etldPlusOnes[date][protocol].add(eTLD_plus_one)
 
     with open(output_file, "a") as w:
         writer = csv.writer(w, quoting=csv.QUOTE_MINIMAL)
