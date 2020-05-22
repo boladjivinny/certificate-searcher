@@ -3,6 +3,8 @@ import glob
 import os
 import sys
 
+from loguru import logger
+
 blacklist_dir = sys.argv[1]
 output_file = sys.argv[2]
 
@@ -44,6 +46,7 @@ protocol_etldPlusOnes = {}
 protocol_domains = {}
 
 for fpath in sorted(glob.glob(os.path.join(blacklist_dir, "*.csv"))):
+    logger.info(f"reading {fpath}")
     date = "-".join(fpath.split('/')[-1].split('-')[:2])
 
     protocol_etldPlusOnes[date] = {"http": set(), "https": set()}
