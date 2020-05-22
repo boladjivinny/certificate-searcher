@@ -67,24 +67,14 @@ for fpath in sorted(glob.glob(os.path.join(blacklist_dir, "*.csv"))):
         writer = csv.writer(w, quoting=csv.QUOTE_MINIMAL)
         http_etldPlusOnes = len(protocol_etldPlusOnes[date]["http"])
         https_etldPlusOnes = len(protocol_etldPlusOnes[date]["https"])
-        percent_https_etldPlusOnes = https_etldPlusOnes / (https_etldPlusOnes + https_etldPlusOnes)
+        percent_https_etldPlusOnes = https_etldPlusOnes / (https_etldPlusOnes + http_etldPlusOnes)
 
         http_domains = len(protocol_domains[date]["http"])
         https_domains = len(protocol_domains[date]["https"])
-        percent_https_domains = https_domains / (https_domains + https_domains)
+        percent_https_domains = https_domains / (https_domains + http_domains)
 
         writer.writerow(
             [date, http_domains, https_domains, percent_https_domains, http_etldPlusOnes, https_etldPlusOnes,
              percent_https_etldPlusOnes])
 
-for date in sorted(protocol_etldPlusOnes):
-    http_etldPlusOnes = len(protocol_etldPlusOnes[date]["http"])
-    https_etldPlusOnes = len(protocol_etldPlusOnes[date]["https"])
-    percent_https_etldPlusOnes = https_etldPlusOnes / (https_etldPlusOnes + https_etldPlusOnes)
-
-    http_domains = len(protocol_domains[date]["http"])
-    https_domains = len(protocol_domains[date]["https"])
-    percent_https_domains = https_domains / (https_domains + https_domains)
-
-    print(
-        f"{date},{http_domains},{https_domains},{percent_https_domains},{http_etldPlusOnes},{https_etldPlusOnes},{percent_https_etldPlusOnes}")
+        w.flush()
