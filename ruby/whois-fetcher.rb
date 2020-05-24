@@ -37,6 +37,8 @@ when ".txt"
   end
 when ".json"
   File.readlines(params[:input]).each do |line|
+    line = line.strip
+    next if line.length == 0
     obj = Oj.load(line.rstrip)
     obj['abuse_domains'].each do |maldomain, maltypes|
       # skip over google safe browsing / phishtank
