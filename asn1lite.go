@@ -8,6 +8,7 @@ import (
 	"github.com/teamnsrg/zcrypto/x509"
 	"github.com/teamnsrg/zcrypto/x509/pkix"
 	"math"
+	"time"
 )
 
 var (
@@ -21,6 +22,9 @@ type tagAndLength struct {
 	isCompound         bool
 }
 
+type validity struct {
+	NotBefore, NotAfter time.Time
+}
 // A StructuralError suggests that the ASN.1 data is valid, but the Go type
 // which is receiving it doesn't match.
 type StructuralError struct {
@@ -241,6 +245,25 @@ func (obj *ASN1Obj) PublicKey(bytes []byte, initialOffset int) ([]byte, int, err
 
 	return bytes[initialOffset : dataOffset+dataLen], nextOffset, nil
 }
+
+func (obj *ASN1Obj) ValidityStart(bytes []byte, initialOffset int) (time.Time, []byte, int, error) {
+	if obj.Name != "Validity" {
+		panic("Cannot call SubjectCommonName() on " + obj.Name)
+	}
+
+	nextOffset, dataOffset, dataLen, err := obj.extractFieldAndAdvanceOffset(bytes, initialOffset)
+	if err != nil {
+		return time.Time{}, nil, nextOffset, err
+	}
+
+	var val validity
+	if _, err := asn1.Unmarshal(bytes[initialOffset:dataOffset+dataLen], &val); err != nil {
+		return time.Time{}, nil, nextOffset, err
+	}
+
+	return val.NotBefore, bytes[initialOffset : dataOffset+dataLen], nextOffset, nil
+}
+
 
 func (obj *ASN1Obj) SubjectCommonName(bytes []byte, initialOffset int) (*pkix.Name, []byte, int, error) {
 	if obj.Name != "Subject" {
@@ -481,6 +504,12 @@ func ParseCertificateNamesOnly(bytes []byte) (*x509.Certificate, error) {
 
 	for _, asn1Obj := range CertObjs {
 		switch asn1Obj.Name {
+		case "Validity":
+			var validStart time.Time
+			validStart, _, offset, err = asn1Obj.ValidityStart(bytes, offset)
+			if !validStart.IsZero() {
+				cert.NotBefore = validStart
+			}
 		case "TBSCertificate":
 			var tagAndLen tagAndLength
 			tbsCertNoCT.tbsStartIndex = offset

@@ -217,9 +217,9 @@ func processCertificates(dataRows chan []string, outputStrings chan string, cert
 		if statsOnly {
 			if len(certChain) >= 2 {
 				parentCert := certChain[1]
-				certInfos <- cs.NewCertInfo(leafCert.FingerprintNoCT, parentCert.SPKISubjectFingerprint)
+				certInfos <- cs.NewCertInfo(leafCert.NotBefore, leafCert.FingerprintNoCT, parentCert.SPKISubjectFingerprint)
 			} else {
-				certInfos <- cs.NewCertInfo(leafCert.FingerprintNoCT, []byte("No parent"))
+				certInfos <- cs.NewCertInfo(leafCert.NotBefore, leafCert.FingerprintNoCT, []byte("No parent"))
 			}
 		} else {
 			maldomainLabels := make(map[string]cs.LabelsSources)
@@ -271,9 +271,31 @@ func writeOutput(outputStrings chan string, outputFilename string, wg *sync.Wait
 	wg.Done()
 }
 
-func collectStatistics(certInfos chan *cs.CertInfo, statsFilename string, wg *sync.WaitGroup) {
-	var statsFile *os.File
+func collectStatistics(certInfos chan *cs.CertInfo, statsFilename string, startValidityFilename string, wg *sync.WaitGroup) {
+	var statsFile, startValidityFile *os.File
 	var err error
+
+	if startValidityFilename == "-" {
+		startValidityFile = os.Stdout
+	} else if len(startValidityFilename) > 0 {
+		startValidityFile, err = os.Create(startValidityFilename)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	dateWriter := bufio.NewWriter(startValidityFile)
+
+	certStats := cs.NewCertStats()
+
+	for certInfo := range certInfos {
+		if added := certStats.AddParentChild(certInfo.ParentSPKISubject, certInfo.TBSNoCTFingerprint); added {
+			dateWriter.WriteString(fmt.Sprintf("%d\n", certInfo.ValidityStart.Unix()))
+		}
+	}
+
+	dateWriter.Flush()
+	startValidityFile.Close()
 
 	if statsFilename == "-" {
 		statsFile = os.Stdout
@@ -282,12 +304,6 @@ func collectStatistics(certInfos chan *cs.CertInfo, statsFilename string, wg *sy
 		if err != nil {
 			log.Fatal(err)
 		}
-	}
-
-	certStats := cs.NewCertStats()
-
-	for certInfo := range certInfos {
-		certStats.AddParentChild(certInfo.ParentSPKISubject, certInfo.TBSNoCTFingerprint)
 	}
 
 	w := bufio.NewWriter(statsFile)
@@ -301,6 +317,7 @@ func collectStatistics(certInfos chan *cs.CertInfo, statsFilename string, wg *sy
 var (
 	outputFilepath = flag.String("o", "-", "Output file for certificate")
 	statsFilepath  = flag.String("statsFile", "", "Stats file for certificate searching")
+	startValidityFilepath  = flag.String("startValidityFile", "", "File for certificate validity start dates")
 	workerCount    = flag.Int("workers", runtime.NumCPU(), "Number of parallel parsers/json unmarshallers")
 	memProfile     = flag.Bool("mem-profile", false, "Run memory profiling")
 	cpuProfile     = flag.Bool("cpu-profile", false, "Run cpu profiling")
@@ -408,7 +425,7 @@ func main() {
 	statsWG := &sync.WaitGroup{}
 	if statsOnly {
 		statsWG.Add(1)
-		go collectStatistics(certInfos, *statsFilepath, statsWG)
+		go collectStatistics(certInfos, *statsFilepath, *startValidityFilepath, statsWG)
 	}
 
 	writeWG := &sync.WaitGroup{}

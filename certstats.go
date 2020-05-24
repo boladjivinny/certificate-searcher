@@ -7,6 +7,7 @@ import (
 	"github.com/steakknife/bloomfilter"
 	"log"
 	"strings"
+	"time"
 )
 
 type CertStats struct {
@@ -40,12 +41,12 @@ func (c *CertStats) AddParentChild(parentSPKI []byte, childTBSNoCT []byte) bool 
 	hash.Write(childTBSNoCT)
 
 	if c.NoCTFingerprints.Contains(hash) {
-		return true
+		return false
 	}
 
 	c.NoCTFingerprints.Add(hash)
 	c.ParentSPKISubjectCounts[parentSPKIStr] += 1
-	return false
+	return true
 }
 
 func (c CertStats) String() string {
@@ -65,11 +66,12 @@ func (c CertStats) String() string {
 }
 
 type CertInfo struct {
+	ValidityStart time.Time
 	TBSNoCTFingerprint []byte
 	ParentSPKISubject  []byte
 }
 
-func NewCertInfo(noCTFingerprint, parentSPKISubjFingerprint[]byte) *CertInfo {
+func NewCertInfo(validityStart time.Time, noCTFingerprint, parentSPKISubjFingerprint[]byte) *CertInfo {
 	certFP := make([]byte, len(noCTFingerprint))
 	parentFP := make([]byte, len(parentSPKISubjFingerprint))
 
@@ -77,6 +79,7 @@ func NewCertInfo(noCTFingerprint, parentSPKISubjFingerprint[]byte) *CertInfo {
 	copy(parentFP, parentSPKISubjFingerprint)
 
 	return &CertInfo{
+		ValidityStart: validityStart,
 		TBSNoCTFingerprint: certFP,
 		ParentSPKISubject: parentFP,
 	}
