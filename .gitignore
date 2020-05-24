@@ -22,3 +22,7 @@ cmd/*
 
 # vim backup files
 *.swp
+
+venv
+whois
+
