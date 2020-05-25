@@ -23,17 +23,6 @@ import (
 
 var log *zap.SugaredLogger
 
-type LabeledCertChain struct {
-	AbuseDomains    map[string]cs.LabelsSources `json:"abuse_domains"`
-	Leaf            *x509.Certificate           `json:"leaf,omitempty"`
-	LeafParent      *x509.Certificate           `json:"leaf_parent,omitempty"`
-	Root            *x509.Certificate           `json:"root,omitempty"`
-	ChainDepth      int                         `json:"chain_depth,omitempty"`
-	ValidationLevel string                      `json:"validation_level,omitempty"`
-	LeafValidLength int                         `json:"leaf_valid_len,omitempty"`
-	MatchedDomains  string                      `json:"matched_domains,omitempty"`
-}
-
 func initLogger() {
 	atom := zap.NewAtomicLevelAt(zap.InfoLevel)
 	logger := zap.New(zapcore.NewCore(
@@ -149,7 +138,7 @@ func decodeAndParseChain(encodedCertChain []string, parser *x509.CertParser, onl
 	return certChain, nil
 }
 
-func extractFeaturesToJSON(chain []*x509.Certificate, labels map[string]cs.LabelsSources) (*LabeledCertChain, error) {
+func extractFeaturesToJSON(chain []*x509.Certificate, labels map[string]cs.LabelsSources) (*cs.LabeledCertChain, error) {
 	var leaf, leafParent *x509.Certificate
 	if len(chain) == 0 {
 		return nil, errors.New("Empty chain")
@@ -160,7 +149,7 @@ func extractFeaturesToJSON(chain []*x509.Certificate, labels map[string]cs.Label
 		leafParent = chain[1]
 	}
 
-	certChain := &LabeledCertChain{
+	certChain := &cs.LabeledCertChain{
 		AbuseDomains: labels,
 		Leaf:         leaf,
 		LeafParent:   leafParent,
@@ -343,6 +332,14 @@ func main() {
 		os.Exit(1)
 	}
 
+	if *cpuProfile {
+		defer profile.Start(profile.CPUProfile, profile.ProfilePath(".")).Stop()
+	}
+	if *memProfile {
+		defer profile.Start(profile.MemProfile, profile.ProfilePath("."), profile.NoShutdownHook).Stop()
+	}
+
+
 	defaultDomains := []string{
 		"google.com",
 		"youtube.com",
@@ -375,12 +372,6 @@ func main() {
 		}
 	}
 
-	if *cpuProfile {
-		defer profile.Start(profile.CPUProfile, profile.ProfilePath(".")).Stop()
-	}
-	if *memProfile {
-		defer profile.Start(profile.MemProfile, profile.ProfilePath("."), profile.NoShutdownHook).Stop()
-	}
 
 	statsOnly := *statsFilepath != ""
 
