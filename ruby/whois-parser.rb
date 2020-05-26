@@ -61,6 +61,7 @@ end
 File.readlines(params[:input]).each do |line|
   line = line.strip
   next if line.length == 0
+  shared_ownership = false
   obj = Oj.load(line.rstrip)
   obj['abuse_domains'].each do |maldomain, maltypes|
     # skip over google safe browsing / phishtank
@@ -81,13 +82,13 @@ File.readlines(params[:input]).each do |line|
     fpath = File.join(params[:directory], maldomain)
     next unless File.file?(fpath)
     whois_record = YAML::load(File.read(fpath))
-    shared_ownership = whois_record.parts.select do |part|
+    shared_ownership = true if whois_record.parts.select do |part|
       admin_emails.select { |a| part.body.include? a }.any?
     end.any?
+  end
 
-    unless shared_ownership
-      puts line
-    end
+  unless shared_ownership
+    puts line
   end
 end
 
