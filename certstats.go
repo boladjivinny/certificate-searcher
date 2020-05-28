@@ -67,11 +67,13 @@ func (c CertStats) String() string {
 
 type CertInfo struct {
 	ValidityStart time.Time
+	ValidityEnd time.Time
+	ValidationLevel string
 	TBSNoCTFingerprint []byte
 	ParentSPKISubject  []byte
 }
 
-func NewCertInfo(validityStart time.Time, noCTFingerprint, parentSPKISubjFingerprint[]byte) *CertInfo {
+func NewCertInfo(validationLevel string, validityStart time.Time, noCTFingerprint, parentSPKISubjFingerprint[]byte) *CertInfo {
 	certFP := make([]byte, len(noCTFingerprint))
 	parentFP := make([]byte, len(parentSPKISubjFingerprint))
 
@@ -79,6 +81,7 @@ func NewCertInfo(validityStart time.Time, noCTFingerprint, parentSPKISubjFingerp
 	copy(parentFP, parentSPKISubjFingerprint)
 
 	return &CertInfo{
+		ValidationLevel: validationLevel,
 		ValidityStart: validityStart,
 		TBSNoCTFingerprint: certFP,
 		ParentSPKISubject: parentFP,

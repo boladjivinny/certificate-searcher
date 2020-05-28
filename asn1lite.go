@@ -499,7 +499,6 @@ func ParseCertificateNamesOnly(bytes []byte) (*x509.Certificate, error) {
 	cert.Subject = pkix.Name{}
 	offset := 0
 	var err error
-
 	tbsCertNoCT := tbsNoCT{}
 
 	for _, asn1Obj := range CertObjs {
