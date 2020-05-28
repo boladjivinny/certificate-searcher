@@ -206,9 +206,9 @@ func processCertificates(dataRows chan []string, outputStrings chan string, cert
 		if statsOnly {
 			if len(certChain) >= 2 {
 				parentCert := certChain[1]
-				certInfos <- cs.NewCertInfo(leafCert.NotBefore, leafCert.FingerprintNoCT, parentCert.SPKISubjectFingerprint)
+				certInfos <- cs.NewCertInfo(leafCert.ValidationLevel.String(), leafCert.NotBefore, leafCert.FingerprintNoCT, parentCert.SPKISubjectFingerprint)
 			} else {
-				certInfos <- cs.NewCertInfo(leafCert.NotBefore, leafCert.FingerprintNoCT, []byte("No parent"))
+				certInfos <- cs.NewCertInfo(leafCert.ValidationLevel.String(), leafCert.NotBefore, leafCert.FingerprintNoCT, []byte("No parent"))
 			}
 		} else {
 			maldomainLabels := make(map[string]cs.LabelsSources)
@@ -279,7 +279,7 @@ func collectStatistics(certInfos chan *cs.CertInfo, statsFilename string, startV
 
 	for certInfo := range certInfos {
 		if added := certStats.AddParentChild(certInfo.ParentSPKISubject, certInfo.TBSNoCTFingerprint); added {
-			dateWriter.WriteString(fmt.Sprintf("%d\n", certInfo.ValidityStart.Unix()))
+			dateWriter.WriteString(fmt.Sprintf("%d,%s\n", certInfo.ValidityStart.Unix(), certInfo.ValidationLevel))
 		}
 	}
 
