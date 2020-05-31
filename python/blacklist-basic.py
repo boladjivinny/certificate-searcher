@@ -84,7 +84,7 @@ for fpath in sorted(glob.glob(os.path.join(blacklist_dir, "*.csv")))[0::7]:
             eTLD_plus_one = row['ETLDPlus1']
             mal_category = row['Category']
 
-            if source not in ['openphish.com','phishtank.com']:
+            if mal_category != "Phishing":
                 continue
 
             protocol_etldPlusOnes[date][protocol].add(eTLD_plus_one)
