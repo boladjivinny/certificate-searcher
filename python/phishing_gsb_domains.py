@@ -18,7 +18,7 @@ with open(output_file, "w") as w:
 
 for fpath in sorted(glob.glob(os.path.join(blacklist_dir, "*.csv"))):
     date = "-".join(fpath.split('/')[-1].split('-')[:3])
-    d = datetime.datetime.strptime(date, '%Y-%m-%d')
+    d = datetime.strptime(date, '%Y-%m-%d')
     if d > datetime(2020, 4, 1):
         continue
 
