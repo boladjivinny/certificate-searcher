@@ -185,7 +185,7 @@ for rr_fpath in sorted(glob.glob(os.path.join(blacklist_dir, "*/RR.json")))[0::7
     if not date in longitudinal_status_counts:
         longitudinal_status_counts[date] = {}
 
-    logger.info(f"reading {rr_fpath}")
+    logger.info(f"reading {banner_fpath}")
     with open(banner_fpath) as f:
         for line in f:
             if line == "null\n":
