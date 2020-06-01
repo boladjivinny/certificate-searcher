@@ -3,6 +3,8 @@ import glob
 import os
 import re
 import sys
+from datetime import datetime
+from loguru import logger
 
 import ujson
 
@@ -18,7 +20,8 @@ class Status(Enum):
     NO_RESPONSE = "NO HTTP RESPONSE"
     RESPONSE_400 = "4** RESPONSE"
     RESPONSE_500 = "5** RESPONSE"
-    PARKED = "PARKED"
+    PARKED_HTTP = "PARKED HTTP"
+    PARKED_DNS = "PARKED DNS"
     NOERROR = "NO ERRORS"
 
 
@@ -57,12 +60,12 @@ class DomainHistory:
 
 
 def page_classification(jsonData, parking_ns):
+    if jsonData['name'] in parking_ns:
+        return Status.PARKED_DNS
+
     error = jsonData['error'] if 'error' in jsonData else ""
     if error != "":
         return Status.ERROR
-
-    if jsonData['name'] in parking_ns:
-        return Status.PARKED
 
     if len(jsonData['data']['http']) == 0:
         return Status.EMPTY
@@ -137,7 +140,7 @@ whitelist = set()
 with open(whitelist_fpath) as f:
     reader = csv.DictReader(f)
     for row in reader:
-        whitelist.add(row['fqdn'])
+        whitelist.add(row['FQDN'])
         whitelist.add(row['e2LD'])
 
 # ns_count = 0
@@ -149,9 +152,14 @@ longitudinal_status_counts = {}
 
 for rr_fpath in sorted(glob.glob(os.path.join(blacklist_dir, "*/test-RR.json")))[0::7]:
     date = rr_fpath.split('/')[-2]
+    d = datetime.strptime(date, '%Y-%m-%d')
+    if d < datetime(2018, 11, 6) or d > datetime(2020, 3, 8):
+        continue
+
     banner_fpath = rr_fpath.replace("RR.json", "banners.json")
 
     parking_ns_domains = set()
+    logger.info(f"reading {rr_fpath}")
     with open(rr_fpath) as f:
         for line in f:
             if line == "null\n" or len(line) == 0:
@@ -173,11 +181,11 @@ for rr_fpath in sorted(glob.glob(os.path.join(blacklist_dir, "*/test-RR.json")))
             if likely_parking(nameservers):
                 domains_with_parking_ns.add(name)
                 parking_ns_domains.add(name)
-                print(f"{name}:{'|'.join(nameservers)}")
 
     if not date in longitudinal_status_counts:
         longitudinal_status_counts[date] = {}
 
+    logger.info(f"reading {rr_fpath}")
     with open(banner_fpath) as f:
         for line in f:
             if line == "null\n":
@@ -191,16 +199,14 @@ for rr_fpath in sorted(glob.glob(os.path.join(blacklist_dir, "*/test-RR.json")))
             url = data['url']
             protocol = url.split(":")[0]
 
-            http_data = data['data']['http']
             status = page_classification(data)
 
             if status not in longitudinal_status_counts[date]:
                 longitudinal_status_counts[date][status] = 0
             longitudinal_status_counts[date][status] += 1
 
-            if status == status.PARKED:
+            if status == status.PARKED_DNS:
                 print(line.strip())
-
 
             # if not domain in domain_histories:
             #     domain_histories[domain] = DomainHistory(domain)
