@@ -11,7 +11,7 @@ blacklist_dir = sys.argv[1]
 safebrowsing_dir = sys.argv[2]
 output_file = sys.argv[3]
 
-fieldnames = ['URL', 'protocol', 'FQDN', 'e2LD', 'source']
+fieldnames = ['date','URL', 'protocol', 'FQDN', 'e2LD', 'source']
 with open(output_file, "w") as w:
     writer = csv.DictWriter(w, quoting=csv.QUOTE_MINIMAL, fieldnames=fieldnames)
     writer.writeheader()
@@ -46,6 +46,7 @@ for fpath in sorted(glob.glob(os.path.join(blacklist_dir, "*.csv"))):
                     continue
 
                 writer.writerow({
+                    'date': date,
                     'URL': url,
                     'protocol': protocol,
                     'FQDN': domain,
@@ -72,6 +73,7 @@ for fpath in sorted(glob.glob(os.path.join(blacklist_dir, "*.csv"))):
                     protocol = entry.split(':')[0]
 
                 writer.writerow({
+                    'date': date,
                     'URL': entry,
                     'protocol': protocol,
                     'FQDN': domain,
