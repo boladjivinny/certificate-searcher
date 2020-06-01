@@ -199,7 +199,7 @@ for rr_fpath in sorted(glob.glob(os.path.join(blacklist_dir, "*/RR.json")))[0::7
             url = data['url']
             protocol = url.split(":")[0]
 
-            status = page_classification(data)
+            status = page_classification(data, domains_with_parking_ns)
 
             if status not in longitudinal_status_counts[date]:
                 longitudinal_status_counts[date][status] = 0
