@@ -150,7 +150,7 @@ domains_with_ns = set()
 domains_with_parking_ns = set()
 longitudinal_status_counts = {}
 
-for rr_fpath in sorted(glob.glob(os.path.join(blacklist_dir, "*/test-RR.json")))[0::7]:
+for rr_fpath in sorted(glob.glob(os.path.join(blacklist_dir, "*/RR.json")))[0::7]:
     date = rr_fpath.split('/')[-2]
     d = datetime.strptime(date, '%Y-%m-%d')
     if d < datetime(2018, 11, 6) or d > datetime(2020, 3, 8):
