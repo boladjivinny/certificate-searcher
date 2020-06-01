@@ -130,7 +130,7 @@ def get_nameservers(data, domain):
                     if 'name' not in rr:
                         continue
 
-                    if rr['type'] == "NS" and rr['name'] == name:
+                    if rr['type'] == "NS" and rr['name'] == name and 'answer' in rr:
                         nameservers.add(rr['answer'])
 
     return nameservers
