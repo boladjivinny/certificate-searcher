@@ -11,13 +11,7 @@ blacklist_dir = sys.argv[1]
 safebrowsing_dir = sys.argv[2]
 output_file = sys.argv[3]
 
-protocol_etldPlusOnes = {}
-protocol_domains = {}
-
-previous_http_e2ld = set()
-previous_https_e2ld = set()
-
-fieldnames = []
+fieldnames = ['URL', 'protocol', 'FQDN', 'e2LD', 'source']
 with open(output_file, "w") as w:
     writer = csv.DictWriter(w, quoting=csv.QUOTE_MINIMAL, fieldnames=fieldnames)
     writer.writeheader()
@@ -68,7 +62,6 @@ for fpath in sorted(glob.glob(os.path.join(blacklist_dir, "*.csv"))):
 
                 if category != 'SOCIAL_ENGINEERING':
                     continue
-
 
                 ext = tldextract.extract(entry)
                 domain = '.'.join(ext).strip('.')
