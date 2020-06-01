@@ -60,7 +60,7 @@ class DomainHistory:
 
 
 def page_classification(jsonData, parking_ns):
-    if jsonData['name'] in parking_ns:
+    if jsonData['domain'] in parking_ns:
         return Status.PARKED_DNS
 
     error = jsonData['error'] if 'error' in jsonData else ""
