@@ -88,15 +88,22 @@ with open(banners_fpath) as f, open(output_certs_fpath, 'w') as w:
                 seen_certificates.add(sha256)
 
                 issuer_dn = leaf['parsed']['issuer_dn']
-                chain = certificates['chain']
-                parent_subject_spki = ''
-                if len(chain) > 0:
-                    parent_subject_spki = chain[0]['parsed']['spki_subject_fingerprint']
+                if not 'chain' in certificates:
+                    cert_writer.writerow([
+                        sha256,
+                        issuer_dn,
+                        ''
+                    ])
+                else:
+                    chain = certificates['chain']
+                    parent_subject_spki = ''
+                    if len(chain) > 0:
+                        parent_subject_spki = chain[0]['parsed']['spki_subject_fingerprint']
 
-                cert_writer.writerow([
-                    sha256,
-                    issuer_dn,
-                    parent_subject_spki
-                ])
+                    cert_writer.writerow([
+                        sha256,
+                        issuer_dn,
+                        parent_subject_spki
+                    ])
             except Exception as e:
                 logger.warning(e)
