@@ -66,7 +66,7 @@ with open(banners_fpath) as f, open(output_certs_fpath, 'w') as w:
         protocol = url.split(":")[0]
 
         response = data['data']['http']['response']
-        response_e2LD = ".".join(tldextract.extract(response['url']['host'])[1:])
+        response_e2LD = ".".join(tldextract.extract(response['request']['url']['host'])[1:])
         response_protocol = response['url']['scheme']
 
         if e2LD != response_e2LD:
