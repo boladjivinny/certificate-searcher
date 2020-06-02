@@ -81,7 +81,7 @@ with open(banners_fpath) as f, open(output_certs_fpath, 'w') as w:
             try:
                 certificates = response['request']['tls_handshake']['server_certificates']
                 leaf = certificates['certificate']
-                sha256 = leaf['parsed']['fingerpring_sha256']
+                sha256 = leaf['parsed']['fingerprint_sha256']
 
                 if sha256 in seen_certificates:
                     continue
