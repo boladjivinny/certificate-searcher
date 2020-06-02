@@ -4,9 +4,9 @@ import os
 import re
 import sys
 from datetime import datetime
-from loguru import logger
 
 import ujson
+from loguru import logger
 
 blacklist_dir = sys.argv[1]
 whitelist_fpath = sys.argv[2]
@@ -59,6 +59,39 @@ class DomainHistory:
         return None
 
 
+parking_strings = [
+    'sedoparking.com',
+    "parkingcrew.net",
+    "snparking.ru",
+    'wanwang.aliyun.com/domain/parking',
+    "parking services by social8.asia",
+    "parkajans.com.t",
+    "domainparking.ru",
+    "parking.livedns.com",
+    "This agreement regarding a domain rental or purchase plan",
+    "This domain is currently not approved for CashParking.",
+    '"PAGE_ParkingID": ParkingID.toString()',
+    "Der Inhaber dieser Domain parkt diese beim Domain-Parking-Programm",
+    "These domains for sale are great",
+    ".com is for sale !",
+    "A GREAT DOMAIN IS ONE OF THE BEST INVESTMENTS YOU CAN MAKE",
+    'is for sale.</div>\r\n\t\t\t\t\t<div class="captcha-top-text">Enter the characters below to continue:',
+    'Note that if the domain is not currently available for sale it might go on sale soon, so make sure to check frequently',
+    "This premium domain name is available for purchase!",
+    "Premium Domain Names at already Discounted Prices",
+    "This domain name is for sale.",
+    "If this is your domain name you must renew it immediately before it is deleted and permanently removed from your account",
+    "This domain has expired and is now suspended.",
+    "<title>Home - domain expired</title>",
+    "<head>\n                <title>Domain Expired</title>\n",
+    "Истёк срок регистрации домена",  # Domain is expired
+    "This domain name has expired and it is going to be lost.",
+    "Click here</a> to renew it.</div>",
+    "This Account has been suspended.\n",
+    "parked-content.godaddy.com",
+]
+
+
 def page_classification(jsonData, parking_ns):
     if jsonData['domain'] in parking_ns:
         return Status.PARKED_DNS
@@ -74,13 +107,17 @@ def page_classification(jsonData, parking_ns):
         return Status.NO_RESPONSE
 
     http_response = data['data']['http']['response']
+    if 'body' in http_response:
+        for str in parking_strings:
+            if str in http_response['body']:
+                return Status.PARKED_HTTP
 
-    # http_status_code = http_response['status_code']
-    # if 400 <= http_status_code and http_status_code < 500:
-    #     return Status.RESPONSE_400
-    #
-    # if 500 <= http_status_code and http_status_code < 600:
-    #     return Status.RESPONSE_500
+    http_status_code = http_response['status_code']
+    if 400 <= http_status_code < 500:
+        return Status.RESPONSE_400
+
+    if 500 <= http_status_code < 600:
+        return Status.RESPONSE_500
 
     return Status.NOERROR
 
@@ -148,6 +185,8 @@ with open(whitelist_fpath) as f:
 domains = set()
 domains_with_ns = set()
 domains_with_parking_ns = set()
+http_noerror_domains = set()
+https_noerror_domains = set()
 longitudinal_status_counts = {}
 
 for rr_fpath in sorted(glob.glob(os.path.join(blacklist_dir, "*/RR.json")))[0::7]:
@@ -183,7 +222,16 @@ for rr_fpath in sorted(glob.glob(os.path.join(blacklist_dir, "*/RR.json")))[0::7
                 parking_ns_domains.add(name)
 
     if not date in longitudinal_status_counts:
-        longitudinal_status_counts[date] = {}
+        longitudinal_status_counts[date] = {
+            Status.ERROR: 0,
+            Status.EMPTY: 0,
+            Status.NO_RESPONSE: 0,
+            Status.RESPONSE_400: 0,
+            Status.RESPONSE_500: 0,
+            Status.PARKED_HTTP: 0,
+            Status.PARKED_DNS: 0,
+            Status.NOERROR: 0,
+        }
 
     logger.info(f"reading {banner_fpath}")
     with open(banner_fpath) as f:
@@ -205,16 +253,49 @@ for rr_fpath in sorted(glob.glob(os.path.join(blacklist_dir, "*/RR.json")))[0::7
                 longitudinal_status_counts[date][status] = 0
             longitudinal_status_counts[date][status] += 1
 
-            if status == status.PARKED_DNS:
+            if status == status.NOERROR:
+                if protocol == 'http':
+                    http_noerror_domains.add(protocol)
+
+                if protocol == 'https':
+                    https_noerror_domains.add(protocol)
+
                 print(line.strip())
 
-            # if not domain in domain_histories:
-            #     domain_histories[domain] = DomainHistory(domain)
-            #
-            # domain_histories[domain].add_date(date, protocol)
-            #
-            # protocol_urls[protocol].add(":".join(url.split(":")[1:]))
-            # protocol_domains[protocol].add(domain)
+    with open('blacklist-stats.txt', 'a') as f:
+        statuses = longitudinal_status_counts[date]
+        f.write(f"{date},{statuses[Status.ERROR]},{statuses[Status.EMPTY]},{statuses[Status.NO_RESPONSE]},{statuses[Status.RESPONSE_400]},{statuses[Status.RESPONSE_500]},{statuses[Status.PARKED_HTTP]},{statuses[Status.PARKED_DNS]}\n")
+        # if not domain in domain_histories:
+        #     domain_histories[domain] = DomainHistory(domain)
+        #
+        # domain_histories[domain].add_date(date, protocol)
+        #
+        # protocol_urls[protocol].add(":".join(url.split(":")[1:]))
+        # protocol_domains[protocol].add(domain)
+
+logger.info(f"domains: {len(domains)}")
+logger.info(f"domains_with_ns: {len(domains_with_ns)}")
+logger.info(f"domains_with_parking_ns: {len(domains_with_parking_ns)}")
+logger.info(f"http_noerror_domains: {len(http_noerror_domains)}")
+logger.info(f"https_noerror_domains: {len(https_noerror_domains)}")
+
+
+# with open("/Users/zanema/src/malicious-certificates/data/parked-banners.no_errors.json") as f:
+#     for line in f:
+#         if line == "null\n":
+#             continue
+#
+#         data = ujson.loads(line.rstrip())
+#         domain = data['domain']
+#
+#         url = data['url']
+#         protocol = url.split(":")[0]
+#
+#         status = page_classification(data, domains_with_parking_ns)
+#
+#         if status == status.NOERROR:
+#             print(line.strip())
+
 
 # print('-'*40 + "URLS" + '-'*40)
 # print(f"HTTP: {len(protocol_urls['http'])}")
