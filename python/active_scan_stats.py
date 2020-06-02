@@ -1,7 +1,7 @@
 import csv
 import sys
 
-import tldextract
+from tldextract import tldextract
 import ujson
 from loguru import logger
 
@@ -61,12 +61,12 @@ with open(banners_fpath) as f, open(output_certs_fpath, 'w') as w:
             current_date = date_str
 
         domain = data['domain']
-        e2LD = ".".join(tldextract.tldextract(domain)[1:])
+        e2LD = ".".join(tldextract.extract(domain)[1:])
         url = data['url']
         protocol = url.split(":")[0]
 
         response = data['data']['http']['response']
-        response_e2LD = ".".join(tldextract.tldextract(response['url']['host'])[1:])
+        response_e2LD = ".".join(tldextract.extract(response['url']['host'])[1:])
         response_protocol = response['url']['scheme']
 
         if e2LD != response_e2LD:
