@@ -5,11 +5,13 @@ import re
 import sys
 from datetime import datetime
 
+import tldextract
 import ujson
 from loguru import logger
 
-blacklist_dir = sys.argv[1]
-whitelist_fpath = sys.argv[2]
+scanning_dir = sys.argv[1]
+blacklist_dir = sys.argv[2]
+safebrowsing_dir = sys.argv[3]
 
 from enum import Enum
 
@@ -173,12 +175,7 @@ def get_nameservers(data, domain):
     return nameservers
 
 
-whitelist = set()
-with open(whitelist_fpath) as f:
-    reader = csv.DictReader(f)
-    for row in reader:
-        whitelist.add(row['FQDN'])
-        whitelist.add(row['e2LD'])
+
 
 # ns_count = 0
 # parking_ns_count = 0
@@ -189,11 +186,51 @@ http_noerror_domains = set()
 https_noerror_domains = set()
 longitudinal_status_counts = {}
 
-for rr_fpath in sorted(glob.glob(os.path.join(blacklist_dir, "*/RR.json")))[0::7]:
+for rr_fpath in sorted(glob.glob(os.path.join(scanning_dir, "*/RR.json")))[0::7]:
     date = rr_fpath.split('/')[-2]
     d = datetime.strptime(date, '%Y-%m-%d')
     if d < datetime(2018, 11, 6) or d > datetime(2020, 3, 8):
         continue
+
+    gsb_paths = glob.glob(os.path.join(safebrowsing_dir, date + "/", f"{date}T00*-results.txt"))
+    if len(gsb_paths) == 0:
+        continue
+
+    gsb_path = gsb_paths[0]
+
+    whitelist = set()
+    blacklist_path = os.path.join(blacklist_dir, f"{date}-blacklist-entries.csv")
+    logger.info(f"reading {blacklist_path}")
+    with open(blacklist_path) as f:
+        csv_reader = csv.DictReader(f)
+        for row in csv_reader:
+            url = row['URL']
+            protocol = row['Scheme']
+            domain = row['Host']
+            source = row['Source']
+            eTLD_plus_one = row['ETLDPlus1']
+
+            if source not in ['phishtank.com', 'openphish.com']:
+                continue
+
+            whitelist.add(eTLD_plus_one)
+            whitelist.add(domain)
+
+    logger.info(f"reading {gsb_path}")
+    with open(gsb_path) as gsb:
+        csv_reader = csv.reader(gsb)
+        for row in csv_reader:
+            entry = row[0]
+            category = row[2]
+
+            if category != 'SOCIAL_ENGINEERING':
+                continue
+
+            ext = tldextract.extract(entry)
+            domain = '.'.join(ext).strip('.')
+            eTLD_plus_one = '.'.join(ext[1:]).strip('.')
+            whitelist.add(eTLD_plus_one)
+            whitelist.add(domain)
 
     banner_fpath = rr_fpath.replace("RR.json", "banners.json")
 
@@ -264,7 +301,7 @@ for rr_fpath in sorted(glob.glob(os.path.join(blacklist_dir, "*/RR.json")))[0::7
 
     with open('blacklist-stats.txt', 'a') as f:
         statuses = longitudinal_status_counts[date]
-        f.write(f"{date},{statuses[Status.ERROR]},{statuses[Status.EMPTY]},{statuses[Status.NO_RESPONSE]},{statuses[Status.RESPONSE_400]},{statuses[Status.RESPONSE_500]},{statuses[Status.PARKED_HTTP]},{statuses[Status.PARKED_DNS]}\n")
+        f.write(f"{date},{statuses[Status.ERROR]},{statuses[Status.EMPTY]},{statuses[Status.NO_RESPONSE]},{statuses[Status.RESPONSE_400]},{statuses[Status.RESPONSE_500]},{statuses[Status.PARKED_HTTP]},{statuses[Status.PARKED_DNS]},{statuses[Status.NOERROR]}\n")
         # if not domain in domain_histories:
         #     domain_histories[domain] = DomainHistory(domain)
         #
