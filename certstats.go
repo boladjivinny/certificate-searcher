@@ -56,7 +56,7 @@ func (c CertStats) String() string {
 		total += certificateCount
 	}
 
-	str.WriteString(fmt.Sprintf("%d total subject SPKI subjects, %d total certificates (TBSNoCT)\n", len(c.ParentSPKISubjectCounts), total))
+	str.WriteString(fmt.Sprintf("%d total parent SPKI subjects, %d total certificates (TBSNoCT)\n", len(c.ParentSPKISubjectCounts), total))
 
 	for spkiSubject, certificateCount := range c.ParentSPKISubjectCounts {
 		str.WriteString(fmt.Sprintf("%s,%d\n", spkiSubject, certificateCount))

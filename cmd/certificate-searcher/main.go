@@ -178,8 +178,8 @@ func prettyParseCertificate(encodedCertChain []string, parser *x509.CertParser, 
 }
 
 func processCertificates(dataRows chan []string, outputStrings chan string, certInfos chan *cs.CertInfo, labelers []cs.DomainLabeler, onlyParseNames bool, statsOnly bool, wg *sync.WaitGroup) {
-	const CERT_INDEX int = 1
-	const CHAIN_INDEX int = 3
+	const CERT_INDEX int = 2
+	const CHAIN_INDEX int = 4
 	const CHAIN_DELIMETER string = "|"
 
 	parser := x509.NewCertParser()
@@ -392,6 +392,7 @@ func main() {
 		cs.NewBitSquattingLabeler(&baseDomains),
 		cs.NewWrongTLDLabeler(&baseDomains),
 		cs.NewPhishTankLabeler(),
+		cs.NewOpenPhishLabeler(),
 		cs.NewSafeBrowsingLabeler(),
 	}
 

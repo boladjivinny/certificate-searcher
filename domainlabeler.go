@@ -476,7 +476,7 @@ func NewPhishTankLabeler() *PhishTankLabeler {
 		panic("No caller information")
 	}
 
-	file, err := os.Open(filepath.Join(path.Dir(filename), "domainlists/phishtank-hostnames-04-15-2020.txt"))
+	file, err := os.Open(filepath.Join(path.Dir(filename), "domainlists/phishtank-hostnames-2018-09-19-to-2020-05-26.sanitized.txt"))
 	if err != nil {
 		panic(err)
 	}
@@ -508,6 +508,48 @@ func (p *PhishTankLabeler) LabelDomain(domain string) map[DomainLabel][]string {
 	return domainLabels
 }
 
+type OpenPhishLabeler struct {
+	blacklistedDomains map[string]struct{}
+}
+
+func NewOpenPhishLabeler() *OpenPhishLabeler {
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		panic("No caller information")
+	}
+
+	file, err := os.Open(filepath.Join(path.Dir(filename), "domainlists/openphish-hostnames-2018-09-19-to-2020-05-26.sanitized.txt"))
+	if err != nil {
+		panic(err)
+	}
+	defer file.Close()
+
+	ptl := &OpenPhishLabeler{
+		blacklistedDomains: make(map[string]struct{}),
+	}
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		domain := strings.TrimSpace(scanner.Text())
+		if domain == "" {
+			continue
+		}
+
+		ptl.blacklistedDomains[domain] = struct{}{}
+	}
+
+	return ptl
+}
+
+func (p *OpenPhishLabeler) LabelDomain(domain string) map[DomainLabel][]string {
+	domainLabels := make(map[DomainLabel][]string)
+
+	if _, present := p.blacklistedDomains[domain]; present {
+		domainLabels[PHISHTANK] = nil
+	}
+
+	return domainLabels
+}
+
 type SafeBrowsingLabeler struct {
 	blacklistedDomains map[string]struct{}
 }
@@ -518,7 +560,7 @@ func NewSafeBrowsingLabeler() *SafeBrowsingLabeler {
 		panic("No caller information")
 	}
 
-	file, err := os.Open(filepath.Join(path.Dir(filename), "domainlists/gsb_combined_2018-10-29-2020-02-21.txt"))
+	file, err := os.Open(filepath.Join(path.Dir(filename), "domainlists/gsb_blacklist_2018-10-29-to-2020-05-26.sanitized.txt"))
 	if err != nil {
 		panic(err)
 	}
