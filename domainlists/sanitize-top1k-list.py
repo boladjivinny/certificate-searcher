@@ -24,6 +24,7 @@ common_words = {'adobe',
 'discuss',
 'entrepreneur',
 'fandom',
+'fidelity',
 'focus',
 'force',
 'genius',
@@ -50,6 +51,7 @@ common_words = {'adobe',
 'tinder',
 'twitch',
 'weather',
+'youth',
 }
 
 common_suffix = {'xvideos', 'nytimes', 'myway'}
