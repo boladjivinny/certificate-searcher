@@ -14,6 +14,7 @@ common_words = {'adobe',
 'blackboard',
 'blizzard',
 'blogger',
+'blogspot', # causes issues with etld parsing
 'booking',
 'cambridge',
 'chase',
