@@ -64,7 +64,6 @@ deepl.com
 fiaharam.net
 geeksforgeeks.org
 capitalone.com
-cloudfront.net
 samsung.com
 sbc7wfnaakau.com
 google.com.au
