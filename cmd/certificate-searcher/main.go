@@ -63,13 +63,22 @@ func isDirectory(path string) (bool, error) {
 	return fileInfo.IsDir(), nil
 }
 
-func getDirectoryFiles(dirPath string) ([]string, error) {
+func getDirectoryFiles(dirPath string, startAt string) ([]string, error) {
 	filepaths := make([]string, 0)
 	if files, err := ioutil.ReadDir(dirPath); err != nil {
 		return filepaths, err
 	} else {
 		baseDir := strings.TrimSuffix(dirPath, "/")
+		started := startAt == ""
 		for _, info := range files {
+			if !started && info.Name() != startAt {
+				if info.Name() == startAt {
+					started = true
+				} else {
+					continue
+				}
+			}
+
 			filepaths = append(filepaths, baseDir+"/"+info.Name())
 		}
 	}
@@ -77,9 +86,9 @@ func getDirectoryFiles(dirPath string) ([]string, error) {
 	return filepaths, nil
 }
 
-func getFilesForPath(path string) (filepaths []string, err error) {
+func getFilesForPath(path string, startAt string) (filepaths []string, err error) {
 	if isDir, err := isDirectory(path); err == nil && isDir {
-		filepaths, err = getDirectoryFiles(path)
+		filepaths, err = getDirectoryFiles(path, startAt)
 	} else if !isDir {
 		filepaths = []string{path}
 	}
@@ -304,15 +313,16 @@ func collectStatistics(certInfos chan *cs.CertInfo, statsFilename string, startV
 
 // Command line flags
 var (
-	outputFilepath = flag.String("o", "-", "Output file for certificate")
-	statsFilepath  = flag.String("statsFile", "", "Stats file for certificate searching")
-	startValidityFilepath  = flag.String("startValidityFile", "", "File for certificate validity start dates")
-	workerCount    = flag.Int("workers", runtime.NumCPU(), "Number of parallel parsers/json unmarshallers")
-	memProfile     = flag.Bool("mem-profile", false, "Run memory profiling")
-	cpuProfile     = flag.Bool("cpu-profile", false, "Run cpu profiling")
-	namesOnly      = flag.Bool("names-only", false, "only parse names from cert (faster)")
-	domainFilepath = flag.String("domains", "", ".txt file with base domain names for name-similarity labeling")
-	usage          = func() {
+	startAt               = flag.String("start-at", "", "file to start at within input directory")
+	outputFilepath        = flag.String("o", "-", "Output file for certificate")
+	statsFilepath         = flag.String("statsFile", "", "Stats file for certificate searching")
+	startValidityFilepath = flag.String("startValidityFile", "", "File for certificate validity start dates")
+	workerCount           = flag.Int("workers", runtime.NumCPU(), "Number of parallel parsers/json unmarshallers")
+	memProfile            = flag.Bool("mem-profile", false, "Run memory profiling")
+	cpuProfile            = flag.Bool("cpu-profile", false, "Run cpu profiling")
+	namesOnly             = flag.Bool("names-only", false, "only parse names from cert (faster)")
+	domainFilepath        = flag.String("domains", "", ".txt file with base domain names for name-similarity labeling")
+	usage                 = func() {
 		fmt.Fprintf(os.Stderr, "Usage of %s: %s <flags> <input-file-or-dir>\n", os.Args[0], os.Args[0])
 		fmt.Print("Flags:\n")
 		flag.PrintDefaults()
@@ -338,7 +348,6 @@ func main() {
 	if *memProfile {
 		defer profile.Start(profile.MemProfile, profile.ProfilePath("."), profile.NoShutdownHook).Stop()
 	}
-
 
 	defaultDomains := []string{
 		"google.com",
@@ -372,13 +381,12 @@ func main() {
 		}
 	}
 
-
 	statsOnly := *statsFilepath != ""
 
 	inputPath := flag.Arg(0)
 	verifyPathExists(inputPath)
 
-	filepaths, err := getFilesForPath(inputPath)
+	filepaths, err := getFilesForPath(inputPath, *startAt)
 	if err != nil {
 		log.Fatalf("Unable to get files for path %s", inputPath)
 	}
