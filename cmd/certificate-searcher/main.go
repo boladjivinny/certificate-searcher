@@ -71,11 +71,11 @@ func getDirectoryFiles(dirPath string, startAt string) ([]string, error) {
 		baseDir := strings.TrimSuffix(dirPath, "/")
 		started := startAt == ""
 		for _, info := range files {
-			if !started && info.Name() != startAt {
-				if info.Name() == startAt {
-					started = true
-				} else {
+			if !started {
+				if info.Name() != startAt {
 					continue
+				} else {
+					started = true
 				}
 			}
 
