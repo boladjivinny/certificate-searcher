@@ -3,6 +3,7 @@ package certificate_searcher
 import (
 	"crypto/sha256"
 	"encoding/asn1"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"github.com/teamnsrg/zcrypto/x509"
@@ -77,8 +78,8 @@ func parseTagAndLength(bytes []byte, initOffset int) (ret tagAndLength, offset i
 	offset = initOffset
 	// parseTagAndLength should not be called without at least a single
 	// byte to read. Thus this check is for robustness:
-	if offset >= len(bytes) {
-		err = errors.New("asn1: internal error in parseTagAndLength")
+	if offset >= len(bytes) || offset < 0 {
+		err = errors.New(fmt.Sprintf("asn1: internal error in parseTagAndLength %s", hex.EncodeToString(bytes)))
 		return
 	}
 	b := bytes[offset]
