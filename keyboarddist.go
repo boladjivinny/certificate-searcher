@@ -22,7 +22,7 @@ func (c1 coordinate) distance(c2 coordinate) float64 {
 func init() {
 	qwertyAdjacencyMatrix = make(map[rune]map[rune]bool)
 	qwertyAdjacentRunes = make(map[rune][]rune)
-	asciiLowerAlphanumeric = "abcdefghijklmnopqrstuvwxyz1234567890"
+	asciiLowerAlphanumeric = "abcdefghijklmnopqrstuvwxyz1234567890-"
 
 	qwertyCoordinates := make(map[rune]coordinate)
 	qwertyCoordinates['1'] = coordinate{x: 0, y: 3}
@@ -35,6 +35,7 @@ func init() {
 	qwertyCoordinates['8'] = coordinate{x: 7, y: 3}
 	qwertyCoordinates['9'] = coordinate{x: 8, y: 3}
 	qwertyCoordinates['0'] = coordinate{x: 9, y: 3}
+	qwertyCoordinates['-'] = coordinate{x: 10, y: 3}
 
 	qwertyCoordinates['q'] = coordinate{x: 0.5, y: 2}
 	qwertyCoordinates['w'] = coordinate{x: 1.5, y: 2}
@@ -78,8 +79,9 @@ func init() {
 
 			if dist > 0 && dist < 1.5 {
 				qwertyAdjacencyMatrix[r1][r2] = true
-				qwertyAdjacentRunes[r1] = append(qwertyAdjacentRunes[r1], r2)
 			}
+			// move the statement here so that all the combinations are possible
+			qwertyAdjacentRunes[r1] = append(qwertyAdjacentRunes[r1], r2)
 		}
 	}
 }
@@ -103,6 +105,7 @@ func QwertyAdjacentRunes(char rune) ([]rune, error) {
 	if !QwertyAlphanumeric(char) {
 		return nil, errors.New("Unrecognized QWERTY keyboard character: " + string(char))
 	}
+	
 	return qwertyAdjacentRunes[char], nil
 }
 
